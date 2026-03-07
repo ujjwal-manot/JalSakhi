@@ -5,7 +5,7 @@
 
 ## The Problem
 
-India has 1.9 million rural habitations but only 2,200 water testing labs. Average distance to the nearest lab: 50+ km. Turnaround: 3-14 days. Cost: INR 500-2000 per test. Meanwhile, women and girls spend 1.4 billion hours/year collecting water — often from sources they cannot verify are safe. By the time lab results arrive, the contamination event is over, or families have already consumed the water.
+India has 1.9 million rural habitations but only 2,200 water testing labs. Turnaround: 3-14 days. Cost: INR 500-2000 per test. Women and girls spend 1.4 billion hours/year collecting water — often from sources they cannot verify are safe. By the time lab results arrive, families have already consumed the water.
 
 **You can't manage what you can't measure. And India cannot measure its water.**
 
@@ -13,118 +13,104 @@ India has 1.9 million rural habitations but only 2,200 water testing labs. Avera
 
 ## The Solution
 
-JalSakhi turns any smartphone into a field-deployable water laboratory using two sensing modes:
+JalSakhi turns any smartphone into a field-deployable water laboratory.
 
 **Mode 1 — Electrochemical Fingerprinting (Precision)**
-A pocket-sized potentiostat dongle (INR 800, USB-C) + disposable screen-printed electrodes (INR 25 each). The device performs voltammetric scans — sweeping voltage across the electrode and measuring the current response. Each contaminant produces a unique electrochemical signature. An on-device 1D-CNN model identifies and quantifies contaminants in 60 seconds.
+A pocket-sized potentiostat dongle (INR 1,200) connects via USB-C. Disposable screen-printed electrodes (INR 25 each) dip into a water sample. The device performs voltammetric scans — a controlled voltage sweep while measuring picoamp-to-milliamp current response. Each contaminant produces a unique electrochemical signature. An on-device 1D-CNN identifies and quantifies contaminants in 60 seconds.
 
 | Contaminant | Detection Limit | Method |
 |-------------|----------------|--------|
-| Ammonia | 0.05 mg/L | Square Wave Voltammetry (Prussian Blue SPE) |
-| Lead | 1 ppb | Differential Pulse ASV (Bismuth-film SPE) |
-| Arsenic | 5 ppb | Differential Pulse ASV (Gold nanoparticle SPE) |
-| Nitrate | 0.5 mg/L | Cyclic Voltammetry (Copper-modified SPE) |
-| Iron | 0.05 mg/L | Differential Pulse Voltammetry |
+| Ammonia | 0.05 mg/L | SWV (Prussian Blue SPE) |
+| Lead | 1 ppb | DPASV (Bismuth-film SPE) |
+| Arsenic | 5 ppb | DPASV (Gold nanoparticle SPE) |
+| Nitrate | 0.5 mg/L | CV (Copper-modified SPE) |
+| Iron | 0.05 mg/L | DPV (bare carbon) |
 | Fluoride | 0.1 mg/L | Potentiometry (ISE) |
 
 **Mode 2 — Colorimetric Strip Analysis (Rapid Screening)**
-Photograph a standard multi-parameter test strip against a calibration card. Computer vision corrects for lighting and phone camera differences. A CNN maps reagent pad colors to contaminant concentrations. Zero additional hardware — just the strip, the card, and a phone.
+Photograph a test strip against a calibration card. Computer vision corrects for phone camera and lighting differences via ArUco marker detection + 10-patch color correction matrix. Zero hardware needed — just strips, card, and phone.
 
 ---
 
-## The Platform: Community Contamination Intelligence
+## Engineering Depth — Not a Generic ADC Board
 
-Individual tests are useful. Aggregated data is transformative.
+**Potentiostat architecture** (AD5940 AFE + STM32L432):
+- 12-bit DAC waveform generator (CV/DPV/SWV/ASV/EIS)
+- Control amplifier maintains WE-RE potential via CE feedback loop
+- Programmable TIA (200 Ω to 10 MΩ) with auto-range: 10 nA to 10 mA dynamic range
+- 16-bit ADC at 200 kSPS, PGA 1x-9x, Sinc2+Sinc3 digital filtering
+- Current resolution: ≤ 10 nA | Voltage resolution: ≤ 1 mV | SNR > 40 dB
 
-Women Self-Help Groups (12 million SHGs, 140 million members across India) deploy as **Jal Sakhis (Water Guardians)**. Each SHG tests community water sources weekly. Results upload to a cloud platform that builds:
+**Noise control**: 4-layer PCB (signal/GND/power/digital split), separate analog/digital LDO rails, ferrite bead isolation, stamped metal shielding can, guard ring on high-impedance traces, RC anti-aliasing filter.
 
-- **Contamination heatmaps** — spatial interpolation from sparse test points (Kriging)
-- **Temporal forecasting** — LSTM models predict contamination spikes from weather + seasonal patterns
-- **Source attribution** — correlate contamination events with upstream industrial/agricultural activity
-- **Municipal dashboard** — district-level water safety scores fed into Jal Jeevan Mission monitoring
+**Temperature compensation**: TMP117 sensor (±0.1°C) near electrode connector. Firmware corrects peak current and potential per contaminant using Arrhenius-derived coefficients: `I_corrected = I_measured / (1 + α(T − T_ref))`.
 
-**This transforms women's local water knowledge into district-level infrastructure intelligence.**
+**Electrode contact**: Gold-plated Mill-Max pogo pins (100 gf spring force), mechanical guide slot (±0.25mm), contact impedance verified before every scan (< 5 Ω variation).
 
----
+**Calibration**: Factory calibration stored in flash (sensitivity, offset, LOD, LOQ per electrode type). Field calibration via standard solution — correction factor applied until recalibration. Target: < 5% error.
 
-## Why This Is Not Another IoT Sensor Box
+**Deterministic waveform control**: TIM2 hardware interrupt drives DAC stepping with < 10 us jitter. DMA-based SPI transfers to AD5940. Synchronized ADC sampling.
 
-| Typical IoT Water Monitor | JalSakhi |
-|---|---|
-| Fixed sensor at one location ($200+) | Portable dongle ($10-15) tests ANY source |
-| 3-4 parameters, drifts over weeks | 7+ contaminants at ppb, fresh electrode every test |
-| Data stays siloed per household | Crowdsourced data builds contamination maps |
-| Requires dedicated hardware + internet | Works on any smartphone, fully offline-capable |
-| Passive monitoring | Active forensic testing — users choose what to test |
+**Fault detection**: Pre-scan checks (electrode presence, sample presence, contact stability, temperature range, calibration age). Post-scan checks (ADC saturation, baseline slope anomaly). Bad tests are rejected automatically with clear user guidance.
 
-**Key insight**: Disposable electrodes eliminate the #1 problem in field sensing — sensor drift and calibration. Every test starts fresh.
-
----
-
-## Hardware: Honest Cost Breakdown
-
-| Component | Part | Cost |
-|-----------|------|------|
-| Analog Front-End | AD5940 (Analog Devices) | $4.50 |
-| Microcontroller | STM32L432 (ARM Cortex-M4) | $2.50 |
-| USB-C + PCB + passives | — | $2.30 |
-| Assembly | — | $1.50 |
-| **Dongle total** | | **$10.80 (INR ~900)** |
-| **SPE per test** | | **$0.30 (INR ~25)** |
-
-At scale (100K units): dongle drops to ~$8, SPE to ~$0.20.
+**Power**: Idle < 2 uA, active scan < 25 mA. Full test cycle: ~0.7 mAh. A 4000 mAh phone powers 5000+ tests.
 
 ---
 
 ## The AI: Why It's Real
 
-**Signal Processing Pipeline**: Raw voltammogram → Savitzky-Golay smoothing → asymmetric least squares baseline correction → derivative-based peak detection → feature extraction (peak potential, peak current, half-width, area).
+**On-device signal processing**: Savitzky-Golay smoothing → ALS baseline correction → derivative peak detection → feature extraction (Ep, Ip, width, area). Runs on STM32 before data reaches the phone.
 
-**ML Model**: 1D Convolutional Neural Network trained on lab-generated voltammograms + synthetic augmentation. Multi-task output: contaminant identification (multi-label sigmoid) + concentration regression (ReLU). Deployed as quantized TFLite model (<200KB) running on-device in <50ms. Published, peer-reviewed architecture (Kammarchedu et al., ACS Sensors, 2022).
+**ML model**: 1D-CNN (4 conv layers → GAP → shared dense → dual heads). Detection head (sigmoid, multi-label) + concentration head (ReLU, regression). INT8 quantized TFLite, < 200 KB, < 50 ms inference.
 
-**Cloud Intelligence**: Ordinary Kriging for spatial interpolation. LSTM for temporal forecasting. Isolation Forest for anomaly detection. Not marketing — standard geostatistical and time-series methods with clear mathematical foundations.
+**Confidence scoring**: Combines model probability, signal-to-noise ratio, and scan quality flag. Output: HIGH / MEDIUM / LOW / RETEST. Low confidence → app recommends retest.
 
----
+**Interference detection**: Autoencoder trained on "normal" voltammograms. High reconstruction error → "Possible matrix interference detected."
 
-## Gender Impact — Structural, Not Cosmetic
+**Synthetic training data**: Physics-based voltammogram generator using Gaussian peak models + Randles-Sevcik kinetics. Augmented with noise, baseline, temperature, and electrode variation.
 
-- Women **are** the sensing infrastructure — not passive beneficiaries
-- Jal Sakhis earn INR 600/month for validated testing — livelihood, not volunteerism
-- Time saved: contamination maps reduce average water collection by 15 min/trip
-- 12 million SHGs already organized under NRLM — no new mobilization needed
-- Women's data drives municipal infrastructure decisions — political empowerment through evidence
+**Domain adaptation**: Model takes metadata input (TDS, pH, temperature, water type) to adapt predictions for groundwater vs. surface vs. tap water matrices.
+
+**Cloud intelligence**: Ordinary Kriging for contamination heatmaps. LSTM for temporal forecasting. Isolation Forest for anomaly detection with source attribution (sewage/industrial/agricultural).
 
 ---
 
-## Scale Economics
+## Security and Data Integrity
 
-| Metric | Value |
-|--------|-------|
-| Cost per comprehensive test | INR 25 |
-| Equivalent lab test cost | INR 500-2000 |
-| Cost reduction | 80-95% |
-| Monitoring frequency improvement | 52x (weekly vs annual lab survey) |
-| Deployment infrastructure | 12M SHGs already exist |
-| Break-even | ~200 SHGs deployed |
+**Device authentication**: Each dongle has a factory-provisioned Ed25519 key in read-protected flash. Every test result is cryptographically signed. Cloud verifies signature, timestamp, sequence number, and GPS consistency.
+
+**Tamper detection**: Server-side statistical checks — identical readings, impossible chemical combinations, extreme outliers vs. regional data, physically impossible values, excessive test frequency. Suspicious data is quarantined.
 
 ---
 
-## Government Alignment
+## The Platform: Community Contamination Intelligence
 
-- **Jal Jeevan Mission**: Ground-truth water quality verification for 19 crore rural tap connections
-- **NRLM/DAY-NRLM**: New livelihood vertical for women SHGs
-- **Atal Bhujal Yojana**: Community groundwater quality monitoring in 7 states
-- **SBM-G Phase 2**: Water quality component of ODF Plus
+Women Self-Help Groups (12M SHGs, 140M members) deploy as **Jal Sakhis (Water Guardians)**. Each SHG tests community water sources weekly. Aggregated data builds district-level contamination intelligence fed into Jal Jeevan Mission dashboards.
+
+**Gender impact — structural**: Women are the sensing infrastructure. Jal Sakhis earn INR 600/month for validated testing. Contamination maps reduce water collection time. Women's data drives municipal infrastructure decisions.
+
+---
+
+## Honest Cost Breakdown
+
+| Component | Cost |
+|-----------|------|
+| AD5940 AFE | $4.50 |
+| STM32L432 MCU | $2.50 |
+| TMP117 temp sensor | $1.20 |
+| Pogo pins (3x Mill-Max) | $1.20 |
+| LDOs, ferrites, caps, ESD | $0.85 |
+| 4-layer PCB + shielding can | $1.50 |
+| Assembly | $1.50 |
+| Enclosure | $0.40 |
+| **Dongle total** | **$14.29 (INR ~1,200)** |
+| **SPE per test** | **$0.30 (INR ~25)** |
 
 ---
 
 ## The Ask
 
-**Pilot**: 100 SHGs across 3 ammonia-affected districts (Bihar/UP/AP). 6 months. INR 5 lakh.
+**Pilot**: 100 SHGs across 3 ammonia-affected districts. 6 months. INR 5 lakh.
+**Deliverable**: Validated contamination intelligence dashboard with >90% correlation to NABL lab results.
 
-**Deliverable**: Validated contamination intelligence dashboard with >90% correlation to NABL lab results, serving 50,000+ people.
-
----
-
-*Every technical claim is backed by peer-reviewed research. Full reference list: 26 papers.*
-*All hardware components are commercially available. Prototype demonstrable.*
+*Every claim backed by 26 peer-reviewed references. All components commercially available. Prototype demonstrable.*

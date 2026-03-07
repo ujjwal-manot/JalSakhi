@@ -230,36 +230,80 @@ JalSakhi inverts this:
 
 Commercial potentiostats cost $500-$50,000. They're lab instruments.
 
-We build a **smartphone-powered potentiostat** for $10-15 using:
+We build a **smartphone-powered potentiostat** for ~$14 using:
 
 | Component | Part | Cost |
 |-----------|------|------|
-| Analog Front-End | AD5940 (Analog Devices) | $4.50 |
-| Microcontroller | STM32L432 (low-power) | $2.50 |
-| USB-C interface | USB-C connector + ESD protection | $0.50 |
-| PCB | 2-layer, 30x15mm | $0.80 |
-| Passives + connectors | Capacitors, resistors, electrode connector | $1.00 |
+| Analog Front-End | AD5940BCBZ (Analog Devices) | $4.50 |
+| Microcontroller | STM32L432KCU6 (ARM Cortex-M4) | $2.50 |
+| Temperature Sensor | TMP117AIDRVR (±0.1°C) | $1.20 |
+| Electrode Connector | 3x Mill-Max 0906 gold pogo pins | $1.20 |
+| LDOs, ferrites, ESD, caps | MCP1700 x2, USBLC6-2SC6, etc. | $0.85 |
+| PCB | 4-layer, 35x18mm + shielding can | $1.50 |
 | Assembly | Pick-and-place (at scale) | $1.50 |
-| **Total BOM** | | **$10.80** |
+| Enclosure | Injection molded | $0.40 |
+| **Total BOM** | | **$14.29** |
 
-The AD5940 is purpose-built for electrochemical sensing:
-- Waveform generator (CV, DPV, SWV, EIS)
-- 16-bit ADC at 200 kSPS
-- Programmable gain amplifier
-- Built-in DSP acceleration
-- Ultra-low power (40 uA in active mode)
+### Potentiostat Measurement Architecture
+
+This is a real 3-electrode potentiostat, not a generic ADC board:
+
+```
+STM32L432KC (ARM Cortex-M4, 80 MHz)
+     │
+     │ SPI @ 20 MHz
+     ▼
+AD5940 Analog Front-End
+     │
+     ├── DAC: 12-bit, 250 kSPS (voltage sweep generation)
+     │         Voltage resolution: ≤ 1 mV
+     │
+     ├── Control Amplifier (OA): drives CE to maintain
+     │   WE-RE potential via voltage feedback loop
+     │
+     ├── Transimpedance Amplifier (TIA): converts cell
+     │   current to measurable voltage
+     │   Programmable R_TIA: 200 Ω to 10 MΩ (6 ranges)
+     │   Auto-range: 10 nA to 10 mA dynamic range
+     │
+     ├── 16-bit ADC: 200 kSPS, PGA (1x-9x)
+     │   Current resolution: ≤ 10 nA
+     │   Sinc2+Sinc3 digital filter (50/60 Hz rejection)
+     │   DFT engine for EIS mode
+     │
+     ▼
+3-electrode electrochemical cell
+     [WE]  [RE]  [CE]
+     Gold-plated spring pogo pins
+     Mechanical guide slot (±0.25mm)
+     Contact impedance verified before every scan
+```
+
+### Key Engineering Specs
+
+| Parameter | Specification |
+|-----------|--------------|
+| Current resolution | ≤ 10 nA |
+| Voltage resolution | ≤ 1 mV |
+| Dynamic range | 10 nA − 10 mA (auto-range) |
+| Scan rate | 10 − 200 mV/s |
+| SNR | > 40 dB |
+| Sampling jitter | < 10 us (hardware timer) |
+| Temperature compensation | ±0.1°C (TMP117) |
+| Power: idle | < 2 uA |
+| Power: scanning | < 25 mA |
+| Noise control | 4-layer PCB, split analog/digital rails, shielding can, guard ring |
+| Electrode contact | Gold pogo pins, < 5 Ω variation, impedance check pre-scan |
+| Calibration | Factory (flash) + field (standard solution), < 5% error |
+| Fault detection | No electrode, dry sample, saturation, contact instability, temp OOR |
 
 ### Screen-Printed Electrodes (SPEs)
 
-SPEs are the "test strips" of electrochemistry:
-- 3-electrode system: Working, Counter, Reference
-- Printed on ceramic or plastic substrate
-- Modified with specific nanomaterials for target contaminants
-- **Disposable** — eliminates sensor drift and calibration
+Disposable 3-electrode system (WE, CE, RE) on ceramic or PET substrate:
+- Modified with target-specific nanomaterials
+- **Disposable** — eliminates sensor drift and calibration entirely
 - Cost: $0.30-0.80 per electrode (bulk)
 - Available from: Metrohm DropSens, Zimmer & Peacock, Zensor R&D
-
-**Electrode Modifications for Target Contaminants:**
 
 | Target | Working Electrode Modification | Technique |
 |--------|-------------------------------|-----------|
@@ -270,66 +314,68 @@ SPEs are the "test strips" of electrochemistry:
 | Iron | Bare carbon | DPV |
 | Fluoride | LaF3 membrane (ISE mode) | Potentiometry |
 
-For the prototype, we use **commercially available SPEs** and modify them in-lab.
-
 ---
 
 ## The AI: Why It's Real This Time
 
-### Signal Processing Pipeline (Not Fake)
+### On-Device Signal Processing (runs on STM32 firmware)
 
-Raw electrochemical data is noisy. Our pipeline:
+Raw electrochemical data goes through a deterministic pipeline before reaching the phone:
 
-1. **Baseline Correction** — subtract capacitive (non-faradaic) current using moving average or Rubinstein-Rosin algorithm
-2. **Smoothing** — Savitzky-Golay filter (preserves peak shape, removes noise)
-3. **Peak Detection** — first/second derivative method to find oxidation/reduction peaks
-4. **Feature Extraction**:
-   - Peak potential (Ep) — identifies WHICH contaminant
-   - Peak current (Ip) — indicates CONCENTRATION (Randles-Sevcik equation)
-   - Half-peak width — indicates reversibility
-   - Peak area — proportional to amount of analyte
+1. **Savitzky-Golay smoothing** (order 3, window 15) — preserves peak shape, removes noise
+2. **ALS baseline correction** — asymmetric least squares removes capacitive background
+3. **Derivative-based peak detection** — first derivative zero-crossing with 5x noise threshold
+4. **Feature extraction** — peak potential (Ep), peak current (Ip), half-width, area
+5. **Quality assessment** — baseline noise RMS → GOOD / MARGINAL / REJECT flag
 
 ### ML Model Architecture
 
-**Input**: Raw voltammogram (500-1000 data points: voltage vs. current)
+**Input**: Voltammogram (1000 points) + metadata (TDS, pH, temperature, water type)
 
-**Model**: 1D Convolutional Neural Network
+**Model**: Domain-adapted 1D-CNN with multi-task output
 ```
-Input (1000,1)
-  → Conv1D(32, k=7) → BatchNorm → ReLU → MaxPool
-  → Conv1D(64, k=5) → BatchNorm → ReLU → MaxPool
-  → Conv1D(128, k=3) → BatchNorm → ReLU → GlobalAvgPool
-  → Dense(64) → Dropout(0.3)
-  → Dense(N_contaminants) → Sigmoid (multi-label)
-  → Dense(N_contaminants) → ReLU (concentration regression)
+Voltammogram [1000,1]                    Metadata [8]
+     │                                       │
+Conv1D(32,k=7)→BN→ReLU→MaxPool          Dense(16)→ReLU
+Conv1D(64,k=5)→BN→ReLU→MaxPool          Dense(16)→ReLU
+Conv1D(128,k=3)→BN→ReLU→MaxPool              │
+Conv1D(128,k=3)→BN→ReLU→GAP                  │
+     │                                        │
+     └──────── Concatenate [128+16=144] ──────┘
+                      │
+               Dense(64)→ReLU→Dropout(0.3)
+                      │
+         ┌────────────┴────────────┐
+         ▼                         ▼
+   Dense(7)→Sigmoid          Dense(7)→ReLU
+   DETECTION HEAD             CONCENTRATION HEAD
+   (multi-label)              (regression, mg/L or ppb)
 ```
 
-**Output**: For each contaminant — {detected: bool, concentration: float, confidence: float}
+**Confidence scoring**: Combines model probability, signal-to-noise ratio, and scan quality. Output per contaminant: `{detected, concentration ± uncertainty, confidence: HIGH/MEDIUM/LOW/RETEST}`. Low confidence → app recommends retest.
 
-**Training Data Sources**:
-- Lab-generated voltammograms (controlled contamination levels)
-- Published electrochemical datasets
-- Synthetic augmentation (noise addition, baseline shift, electrode variation)
-- Transfer learning from existing voltammetry databases
+**Interference detection**: Autoencoder anomaly detector flags voltammograms with high reconstruction error as "possible matrix interference." Prevents false safety signals.
 
-**Why 1D-CNN works here**: Voltammograms have **translational features** (peaks at specific potentials) — exactly what CNNs are designed to detect. This is published, peer-reviewed science, not marketing.
+**Synthetic training data**: Physics-based voltammogram generator using Gaussian peak models + Randles-Sevcik kinetics. Augmented with noise, baseline drift, temperature, and electrode variation. Expands dataset 10-50x.
+
+**Edge deployment**: INT8 quantized TFLite, < 200 KB model size, < 50 ms inference, fully offline.
 
 ### Colorimetric AI Pipeline
 
-For the camera-based strip analysis:
+Camera-based strip analysis with robust calibration:
 
-1. **Calibration Card Detection** — ArUco markers + known color patches
-2. **Perspective Correction** — homography transform
-3. **Color Normalization** — map phone camera response to standard color space using calibration patches
-4. **ROI Extraction** — locate each reagent pad on the test strip
-5. **Color Quantification** — extract mean LAB values per pad
-6. **Regression Model** — Random Forest mapping LAB values → concentration
+1. **ArUco marker detection** — locates calibration card in frame
+2. **Perspective correction** — homography transform to canonical view
+3. **Color correction** — 10-patch calibration card (5 grayscale + 5 chromatic), least-squares 3x3 correction matrix computed per phone/lighting condition
+4. **Lighting correction** — white balance from white patch, CLAHE on L channel, gamma correction from grayscale ramp
+5. **ROI extraction** — locate each reagent pad on the test strip
+6. **CNN regression** — LAB color values → contaminant concentrations
+7. **Cross-phone accuracy target**: < 5% color error (deltaE) after correction
 
-This handles:
-- Different phones (camera response varies)
-- Different lighting (indoor, outdoor, artificial)
-- Different angles
-- Partially wet/dry strips
+### Security and Data Integrity
+
+- **Device authentication**: Ed25519 key pair per dongle (factory-provisioned, read-protected flash). Every test result cryptographically signed.
+- **Tamper detection**: Server-side statistical checks — identical readings, impossible chemistry, extreme outliers vs regional data, excessive test frequency. Suspicious data quarantined.
 
 ---
 
@@ -402,37 +448,59 @@ At scale, comprehensive water testing costs **INR 25 per test** vs **INR 500-200
 
 ```
 JalSakhi/
-├── README.md                          # This file
+├── README.md
 ├── docs/
-│   ├── competition-brief.md           # Competition context and strategy
-│   ├── technical-deep-dive.md         # Electrochemistry, signal processing, ML
+│   ├── one-pager.md                   # Executive summary
+│   ├── competition-brief.md           # Competition strategy + judge Q&A
+│   ├── technical-deep-dive.md         # Full engineering spec (22 subsystems)
 │   ├── deployment-and-impact.md       # Gender model, SHG integration, scale
-│   └── references.md                  # Published research backing every claim
+│   └── references.md                  # 26 peer-reviewed references
 ├── hardware/
 │   ├── potentiostat/                  # Custom potentiostat PCB design
 │   │   ├── schematic/                 # KiCad schematics
-│   │   ├── pcb/                       # PCB layout
+│   │   ├── pcb/                       # 4-layer PCB layout
 │   │   └── bom.csv                    # Bill of materials
-│   └── firmware/                      # STM32 firmware for potentiostat
+│   └── firmware/                      # STM32 firmware
+│       ├── src/                       # Source code
+│       │   ├── main.c                 # Entry point
+│       │   ├── potentiostat.c         # Waveform control + ADC
+│       │   ├── auto_range.c           # Programmable TIA range switching
+│       │   ├── signal_proc.c          # On-device smoothing + peak detection
+│       │   ├── fault_detect.c         # Pre/post-scan fault detection
+│       │   ├── calibration.c          # Factory + field calibration
+│       │   ├── temp_comp.c            # Temperature compensation
+│       │   ├── usb_protocol.c         # USB CDC communication protocol
+│       │   └── power_mgmt.c           # Sleep modes + duty cycling
+│       └── inc/                       # Headers
 ├── app/                               # Flutter mobile application
 │   ├── lib/
-│   │   ├── electrochemistry/          # Signal processing pipeline
+│   │   ├── hal/                       # Hardware abstraction layer
+│   │   ├── protocol/                  # Device communication protocol
+│   │   ├── signal/                    # Signal processing pipeline
+│   │   ├── ml/                        # TFLite + ONNX inference
+│   │   │   ├── classifier.dart        # Voltammogram CNN
+│   │   │   ├── interference.dart      # Autoencoder anomaly detector
+│   │   │   └── confidence.dart        # Confidence scoring
 │   │   ├── colorimetry/              # Camera-based strip analysis
-│   │   ├── ml/                        # TFLite model inference
+│   │   │   ├── calibration.dart       # Color calibration system
+│   │   │   └── lighting.dart          # Lighting correction pipeline
 │   │   └── ui/                        # User interface
-│   └── assets/
-│       └── models/                    # Trained ML models
+│   └── assets/models/                 # Trained ML models (TFLite)
 ├── backend/                           # Cloud platform
 │   ├── api/                           # FastAPI endpoints
-│   ├── ml/                            # Training pipeline
-│   │   ├── voltammogram_cnn/          # 1D-CNN for electrochemical data
-│   │   ├── colorimetric_model/        # Strip color analysis
-│   │   └── spatial_model/             # Contamination mapping (Kriging)
-│   └── dashboard/                     # Municipal dashboard
+│   ├── ml/                            # Training + inference
+│   │   ├── synthetic_gen.py           # Physics-based voltammogram generator
+│   │   ├── train_cnn.py              # Multi-label CNN training
+│   │   ├── domain_adapt.py           # Water-type domain adaptation
+│   │   ├── kriging.py                # Spatial contamination mapping
+│   │   ├── forecaster.py             # LSTM temporal forecasting
+│   │   └── anomaly.py                # Isolation Forest anomaly detection
+│   ├── security/                      # Authentication + tamper detection
+│   └── dashboard/                     # Municipal dashboard (React + Leaflet)
 ├── data/
 │   ├── training/                      # Training datasets
-│   └── synthetic/                     # Data augmentation scripts
-└── presentation/                      # Competition pitch materials
+│   └── synthetic/                     # Generated synthetic voltammograms
+└── presentation/                      # Pitch deck + demo materials
 ```
 
 ---
@@ -464,17 +532,19 @@ JalSakhi/
 
 1. **Real Science** — Electrochemical voltammetry is gold-standard analytical chemistry. We're miniaturizing it, not faking it.
 
-2. **Real AI** — 1D-CNN on voltammograms is published, peer-reviewed, reproducible. Not "threshold alerts" with an AI label.
+2. **Real Hardware Engineering** — 4-layer PCB, programmable TIA with auto-range (10 nA to 10 mA), temperature compensation, shielding can, gold pogo contacts, deterministic waveform control with < 10 us jitter. Not an Arduino with sensors.
 
-3. **Real Cost** — $10-15 dongle + $0.30/test SPE. Honest numbers. Verified against component distributors.
+3. **Real AI** — Domain-adapted 1D-CNN with confidence scoring + interference detection. Trained on physics-based synthetic data. Peer-reviewed architecture. Not "threshold alerts" with an AI label.
 
-4. **Real Scale** — 12 million SHGs already exist. Deployment channels are built. This isn't hypothetical.
+4. **Real Cost** — $14.29 dongle + $0.30/test SPE. Honest numbers. Every part number listed. Verified against Mouser/DigiKey.
 
-5. **Real Gender Impact** — Women become the sensing infrastructure. Their labor is valued. Their data drives municipal decisions. This is structural empowerment, not a pink UI.
+5. **Real Scale** — 12 million SHGs already exist. Deployment channels are built. This isn't hypothetical.
 
-6. **Real Engineering** — Custom analog front-end, signal processing pipeline, edge ML, spatial statistics. This is what an ECE student should be building.
+6. **Real Security** — Ed25519 device authentication, signed data packets, server-side tamper detection. Crowdsourced data you can actually trust.
 
-7. **Real Business Model** — Municipalities pay for contamination intelligence. Women earn for testing. SPE manufacturers supply electrodes. Sustainable, not donor-dependent.
+7. **Real Gender Impact** — Women become the sensing infrastructure. Their labor is valued. Their data drives municipal decisions. This is structural empowerment, not a pink UI.
+
+8. **Real Business Model** — Municipalities pay for contamination intelligence. Women earn for testing. SPE manufacturers supply electrodes. Sustainable, not donor-dependent.
 
 ---
 
