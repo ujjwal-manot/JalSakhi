@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#2B7CD4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>JalSakhi - Water Quality Analyzer</title>
+<style>
+/* ===== RESET & BASE ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#2B7CD4;--blue-light:#E8F1FB;--blue-dark:#1A5FA0;
+  --teal:#0CA4A5;--teal-light:#E6F7F7;
+  --bg:#F8FAFE;--white:#FFFFFF;--gray-50:#F9FAFB;--gray-100:#F3F4F6;
+  --gray-200:#E5E7EB;--gray-300:#D1D5DB;--gray-400:#9CA3AF;
+  --gray-500:#6B7280;--gray-600:#4B5563;--gray-700:#374151;
+  --gray-800:#1F2937;--gray-900:#111827;
+  --green:#10B981;--green-light:#D1FAE5;--green-dark:#047857;
+  --yellow:#F59E0B;--yellow-light:#FEF3C7;--yellow-dark:#B45309;
+  --red:#EF4444;--red-light:#FEE2E2;--red-dark:#B91C1C;
+  --orange:#F97316;--purple:#8B5CF6;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);
+  --shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);
+  --shadow-lg:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+  --radius:12px;--radius-lg:16px;
+  --font:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+  --transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--gray-800);
+  line-height:1.6;min-height:100vh;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+button{font-family:var(--font);cursor:pointer;border:none;outline:none}
+button:focus-visible{box-shadow:0 0 0 3px rgba(43,124,212,.4)}
+
+/* ===== HEADER WITH WATER RIPPLE ===== */
+.header{
+  background:linear-gradient(135deg,var(--blue) 0%,var(--teal) 100%);
+  color:#fff;padding:20px 16px 24px;position:relative;overflow:hidden;
+  text-align:center;
+}
+.header::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 80%,rgba(255,255,255,.12) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 70% 90%,rgba(255,255,255,.08) 0%,transparent 50%);
+  pointer-events:none;
+}
+.ripple-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:.25}
+.header-content{position:relative;z-index:1}
+.logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px}
+.logo svg{width:36px;height:36px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.15))}
+.logo h1{font-size:1.6rem;font-weight:700;letter-spacing:-.5px;text-shadow:0 1px 3px rgba(0,0,0,.15)}
+.header-sub{font-size:.82rem;opacity:.9;font-weight:400;letter-spacing:.3px}
+.demo-badge{
+  display:none;position:absolute;top:12px;right:12px;
+  background:var(--yellow);color:var(--gray-900);
+  font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:6px;
+  letter-spacing:.5px;animation:pulse-badge 2s infinite;z-index:2;
+}
+.demo-badge.show{display:block}
+@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:.7}}
+
+/* ===== MAIN CONTAINER ===== */
+.container{max-width:480px;margin:0 auto;padding:0 12px 100px}
+
+/* ===== CARDS ===== */
+.card{
+  background:var(--white);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow);margin:12px 0;padding:16px;
+  border:1px solid var(--gray-100);
+  transition:var(--transition);
+}
+.card:hover{box-shadow:var(--shadow-md)}
+.card-title{
+  font-size:.78rem;font-weight:600;text-transform:uppercase;
+  letter-spacing:.8px;color:var(--gray-400);margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;
+}
+.card-title svg{width:14px;height:14px;opacity:.7}
+
+/* ===== CONNECTION PANEL ===== */
+.connection-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.status-dot{
+  width:10px;height:10px;border-radius:50%;flex-shrink:0;
+  background:var(--gray-300);transition:var(--transition);
+}
+.status-dot.connecting{background:var(--yellow);animation:blink 1s infinite}
+.status-dot.connected{background:var(--green)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.status-text{font-size:.85rem;color:var(--gray-500);flex:1}
+.device-name{font-weight:600;color:var(--gray-800)}
+.btn-connect{
+  background:var(--blue);color:#fff;padding:10px 20px;border-radius:10px;
+  font-size:.9rem;font-weight:600;transition:var(--transition);
+  display:flex;align-items:center;gap:6px;width:100%;justify-content:center;
+}
+.btn-connect:hover{background:var(--blue-dark);transform:translateY(-1px);box-shadow:var(--shadow-md)}
+.btn-connect:active{transform:translateY(0)}
+.btn-connect:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-connect.connected{background:var(--green-dark)}
+.btn-connect svg{width:18px;height:18px}
+
+.demo-toggle{
+  display:flex;align-items:center;gap:8px;margin-top:8px;
+  padding:8px 12px;background:var(--gray-50);border-radius:8px;
+}
+.demo-toggle label{font-size:.82rem;color:var(--gray-600);flex:1;cursor:pointer}
+.toggle{
+  width:40px;height:22px;background:var(--gray-300);border-radius:11px;
+  position:relative;cursor:pointer;transition:var(--transition);flex-shrink:0;
+}
+.toggle.active{background:var(--teal)}
+.toggle::after{
+  content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;
+  background:#fff;border-radius:50%;transition:var(--transition);
+  box-shadow:0 1px 3px rgba(0,0,0,.15);
+}
+.toggle.active::after{left:20px}
+.signal-bar{display:flex;align-items:flex-end;gap:1px;height:14px;margin-left:auto}
+.signal-bar span{width:3px;background:var(--gray-300);border-radius:1px;transition:var(--transition)}
+.signal-bar span:nth-child(1){height:4px}
+.signal-bar span:nth-child(2){height:7px}
+.signal-bar span:nth-child(3){height:10px}
+.signal-bar span:nth-child(4){height:14px}
+.signal-bar.s1 span:nth-child(1){background:var(--red)}
+.signal-bar.s2 span:nth-child(1),.signal-bar.s2 span:nth-child(2){background:var(--yellow)}
+.signal-bar.s3 span:nth-child(1),.signal-bar.s3 span:nth-child(2),.signal-bar.s3 span:nth-child(3){background:var(--green)}
+.signal-bar.s4 span{background:var(--green)}
+
+/* ===== CONTROL PANEL ===== */
+.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{
+  padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:600;
+  transition:var(--transition);display:flex;align-items:center;
+  justify-content:center;gap:6px;
+}
+.btn:active{transform:scale(.97)}
+.btn-scan{
+  background:linear-gradient(135deg,var(--blue),var(--teal));color:#fff;
+  grid-column:1/-1;font-size:1rem;padding:14px;
+  box-shadow:0 4px 12px rgba(43,124,212,.3);
+}
+.btn-scan:hover{box-shadow:0 6px 16px rgba(43,124,212,.4);transform:translateY(-1px)}
+.btn-scan:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-scan.scanning{
+  background:linear-gradient(135deg,var(--teal),var(--blue));
+  animation:gradient-shift 2s ease infinite;background-size:200% 200%;
+}
+@keyframes gradient-shift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.btn-demo-clean{background:var(--blue-light);color:var(--blue)}
+.btn-demo-clean:hover{background:var(--blue);color:#fff}
+.btn-demo-contam{background:var(--red-light);color:var(--red-dark)}
+.btn-demo-contam:hover{background:var(--red);color:#fff}
+.btn-stop{background:var(--red);color:#fff;grid-column:1/-1;display:none}
+.btn-stop:hover{background:var(--red-dark)}
+.btn-stop.show{display:flex}
+.btn-calibrate{background:var(--gray-100);color:var(--gray-600);font-size:.8rem}
+.btn-calibrate:hover{background:var(--gray-200)}
+.btn-status{background:var(--gray-100);color:var(--gray-600);font-size:.8rem}
+.btn-status:hover{background:var(--gray-200)}
+
+/* Progress */
+.progress-container{margin-top:12px;display:none}
+.progress-container.show{display:block}
+.progress-info{display:flex;justify-content:space-between;font-size:.78rem;color:var(--gray-500);margin-bottom:4px}
+.progress-bar{height:6px;background:var(--gray-100);border-radius:3px;overflow:hidden}
+.progress-fill{
+  height:100%;width:0%;border-radius:3px;transition:width .5s ease;
+  background:linear-gradient(90deg,var(--blue),var(--teal));
+}
+
+/* ===== VOLTAMMOGRAM CHART ===== */
+.chart-card{padding:12px}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chart-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.legend-item{
+  display:flex;align-items:center;gap:3px;font-size:.65rem;
+  color:var(--gray-500);padding:2px 6px;background:var(--gray-50);
+  border-radius:4px;
+}
+.legend-dot{width:6px;height:6px;border-radius:50%}
+.chart-wrapper{
+  position:relative;width:100%;border-radius:8px;overflow:hidden;
+  background:var(--white);border:1px solid var(--gray-100);
+}
+#voltChart{width:100%;height:260px;display:block;touch-action:none}
+.chart-empty{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;color:var(--gray-400);font-size:.85rem;
+  pointer-events:none;transition:opacity .5s;
+}
+.chart-empty svg{width:40px;height:40px;margin-bottom:6px;opacity:.3}
+.chart-empty.hidden{opacity:0}
+
+/* ===== RESULTS PANEL ===== */
+.results-panel{display:none}
+.results-panel.show{display:block;animation:slideUp .5s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+.verdict-card{text-align:center;padding:20px}
+.verdict-icon{font-size:2.5rem;margin-bottom:8px}
+.verdict-text{font-size:1.3rem;font-weight:700;margin-bottom:4px}
+.verdict-sub{font-size:.85rem;color:var(--gray-500)}
+.verdict-safe{background:linear-gradient(135deg,var(--green-light),#ecfdf5);border-color:var(--green)}
+.verdict-safe .verdict-text{color:var(--green-dark)}
+.verdict-warning{background:linear-gradient(135deg,var(--yellow-light),#fffbeb);border-color:var(--yellow)}
+.verdict-warning .verdict-text{color:var(--yellow-dark)}
+.verdict-unsafe{background:linear-gradient(135deg,var(--red-light),#fef2f2);border-color:var(--red)}
+.verdict-unsafe .verdict-text{color:var(--red-dark)}
+.confidence{
+  display:inline-block;padding:3px 10px;border-radius:6px;
+  font-size:.7rem;font-weight:600;letter-spacing:.5px;margin-top:6px;
+}
+.confidence-high{background:var(--green-light);color:var(--green-dark)}
+.confidence-medium{background:var(--yellow-light);color:var(--yellow-dark)}
+.confidence-low{background:var(--red-light);color:var(--red-dark)}
+
+/* Contaminant cards */
+.contaminant-card{
+  display:flex;align-items:center;gap:12px;padding:14px;
+  border-radius:12px;margin:8px 0;background:var(--white);
+  border:1px solid var(--gray-100);transition:var(--transition);
+}
+.contaminant-card:hover{box-shadow:var(--shadow-md)}
+.contam-icon{
+  width:42px;height:42px;border-radius:10px;display:flex;
+  align-items:center;justify-content:center;font-weight:700;
+  font-size:.85rem;color:#fff;flex-shrink:0;
+}
+.contam-info{flex:1;min-width:0}
+.contam-name{font-size:.82rem;font-weight:600;color:var(--gray-800)}
+.contam-value{font-size:1.1rem;font-weight:700;margin:2px 0}
+.contam-limit{font-size:.72rem;color:var(--gray-400)}
+.contam-bar{height:4px;background:var(--gray-100);border-radius:2px;margin-top:4px;overflow:hidden}
+.contam-bar-fill{height:100%;border-radius:2px;transition:width 1.5s cubic-bezier(.4,0,.2,1)}
+.badge{
+  padding:3px 8px;border-radius:6px;font-size:.65rem;font-weight:700;
+  letter-spacing:.5px;flex-shrink:0;
+}
+.badge-safe{background:var(--green-light);color:var(--green-dark)}
+.badge-warning{background:var(--yellow-light);color:var(--yellow-dark)}
+.badge-unsafe{background:var(--red-light);color:var(--red-dark)}
+
+/* ===== TREATMENT ADVISORY ===== */
+.treatment-panel{display:none}
+.treatment-panel.show{display:block;animation:slideUp .5s ease .2s both}
+.treatment-card{
+  padding:12px;background:var(--yellow-light);border-radius:10px;
+  margin:6px 0;border-left:3px solid var(--yellow);
+}
+.treatment-title{font-size:.82rem;font-weight:700;color:var(--yellow-dark);margin-bottom:4px}
+.treatment-text{font-size:.8rem;color:var(--gray-700);line-height:1.5}
+
+/* ===== METADATA PANEL ===== */
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.meta-item{
+  padding:10px;background:var(--gray-50);border-radius:8px;text-align:center;
+}
+.meta-label{font-size:.68rem;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px}
+.meta-value{font-size:1rem;font-weight:700;color:var(--gray-800);margin-top:2px}
+.meta-item.full{grid-column:1/-1}
+
+/* ===== ACTION BUTTONS ===== */
+.actions{display:none;margin:12px 0}
+.actions.show{display:flex;gap:8px;flex-wrap:wrap}
+.btn-action{
+  flex:1;min-width:100px;padding:10px;border-radius:10px;
+  font-size:.8rem;font-weight:600;background:var(--gray-100);
+  color:var(--gray-600);display:flex;align-items:center;
+  justify-content:center;gap:4px;transition:var(--transition);
+}
+.btn-action:hover{background:var(--gray-200)}
+.btn-action svg{width:16px;height:16px}
+
+/* ===== HISTORY ===== */
+.history-list{max-height:300px;overflow-y:auto}
+.history-item{
+  display:flex;align-items:center;gap:10px;padding:10px;
+  border-radius:8px;margin:4px 0;background:var(--gray-50);
+  cursor:pointer;transition:var(--transition);
+}
+.history-item:hover{background:var(--gray-100)}
+.history-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.history-info{flex:1;min-width:0}
+.history-date{font-size:.75rem;color:var(--gray-400)}
+.history-result{font-size:.82rem;font-weight:600}
+.history-empty{text-align:center;padding:20px;color:var(--gray-400);font-size:.85rem}
+
+/* ===== TOAST ===== */
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:var(--gray-900);color:#fff;padding:10px 20px;border-radius:10px;
+  font-size:.82rem;z-index:1000;transition:transform .4s cubic-bezier(.4,0,.2,1);
+  box-shadow:var(--shadow-lg);max-width:90%;text-align:center;
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ===== PRINT ===== */
+@media print{
+  .header{background:var(--blue)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{break-inside:avoid;box-shadow:none;border:1px solid var(--gray-200)}
+  .btn,.btn-connect,.demo-toggle,.actions,.toast,.chart-empty{display:none!important}
+  .results-panel.show{display:block!important}
+  body{background:#fff}
+}
+
+/* ===== RESPONSIVE ===== */
+@media(min-width:600px){
+  .container{padding:0 20px 100px}
+  .card{padding:20px;margin:16px 0}
+  #voltChart{height:320px}
+  .control-grid{grid-template-columns:1fr 1fr 1fr 1fr}
+  .btn-scan{grid-column:1/-1}
+  .btn-stop{grid-column:1/-1}
+}
+
+/* ===== ANIMATIONS ===== */
+.fade-in{animation:fadeIn .5s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.number-animate{display:inline-block;transition:all .8s cubic-bezier(.4,0,.2,1)}
+
+/* Scan line animation */
+.scan-line{
+  position:absolute;top:0;left:0;width:2px;height:100%;
+  background:linear-gradient(180deg,transparent,var(--blue),transparent);
+  opacity:0;transition:opacity .3s;pointer-events:none;
+}
+.scan-line.active{opacity:.6;animation:scanMove 3s linear infinite}
+@keyframes scanMove{from{left:0}to{left:100%}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <canvas class="ripple-canvas" id="rippleCanvas"></canvas>
+  <div class="demo-badge" id="demoBadge">DEMO MODE</div>
+  <div class="header-content">
+    <div class="logo">
+      <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M18 3C18 3 6 17 6 23C6 29.627 11.373 33 18 33C24.627 33 30 29.627 30 23C30 17 18 3 18 3Z" fill="rgba(255,255,255,0.9)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+        <path d="M14 22C14 22 16 20 18 20C20 20 22 22 22 22" stroke="rgba(43,124,212,0.5)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        <path d="M12 26C12 26 15 23 18 23C21 23 24 26 24 26" stroke="rgba(43,124,212,0.3)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        <circle cx="18" cy="15" r="2" fill="rgba(43,124,212,0.4)"/>
+      </svg>
+      <h1>JalSakhi</h1>
+    </div>
+    <p class="header-sub">Electrochemical Water Forensics</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- CONNECTION PANEL -->
+  <div class="card" id="connectionCard">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5l11 11M6.5 17.5l11-11" stroke-linecap="round"/><circle cx="12" cy="12" r="3"/></svg>
+      Device Connection
+    </div>
+    <div class="connection-row">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Not connected</span>
+      <div class="signal-bar" id="signalBar">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <button class="btn-connect" id="btnConnect" onclick="handleConnect()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h12M12 6l6 6-6 6"/></svg>
+      <span id="connectBtnText">Connect to JalSakhi Device</span>
+    </button>
+    <div class="demo-toggle">
+      <label for="demoToggle">Demo Mode (no hardware needed)</label>
+      <div class="toggle" id="demoToggle" onclick="toggleDemo()"></div>
+    </div>
+  </div>
+
+  <!-- CONTROL PANEL -->
+  <div class="card" id="controlCard">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      Controls
+    </div>
+    <div class="control-grid">
+      <button class="btn btn-scan" id="btnScan" onclick="startScan()" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Start Water Analysis
+      </button>
+      <button class="btn btn-demo-clean" onclick="startDemo('clean')">Demo: Clean Water</button>
+      <button class="btn btn-demo-contam" onclick="startDemo('contaminated')">Demo: Contaminated</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopScan()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        Stop Scan
+      </button>
+      <button class="btn btn-calibrate" onclick="sendCommand('CALIBRATE')">Calibrate</button>
+      <button class="btn btn-status" onclick="sendCommand('STATUS')">Check Status</button>
+    </div>
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-info">
+        <span id="progressText">Scanning...</span>
+        <span id="progressTime">--</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+
+  <!-- VOLTAMMOGRAM CHART -->
+  <div class="card chart-card" id="chartCard">
+    <div class="chart-header">
+      <div class="card-title" style="margin-bottom:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        DPV Voltammogram
+      </div>
+    </div>
+    <div class="chart-wrapper">
+      <canvas id="voltChart"></canvas>
+      <div class="chart-empty" id="chartEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <div>Start a scan to see voltammogram</div>
+      </div>
+      <div class="scan-line" id="scanLine"></div>
+    </div>
+    <div class="chart-legend" id="chartLegend">
+      <div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div>Pb (-0.55V)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F97316"></div>As (-0.15V)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2B7CD4"></div>NH3 (+0.05V)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10B981"></div>NO3 (+0.25V)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8B5CF6"></div>Fe (+0.45V)</div>
+    </div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+  <div class="results-panel" id="resultsPanel">
+    <!-- Verdict -->
+    <div class="card verdict-card" id="verdictCard">
+      <div class="verdict-icon" id="verdictIcon"></div>
+      <div class="verdict-text" id="verdictText"></div>
+      <div class="verdict-sub" id="verdictSub"></div>
+      <div class="confidence" id="confidenceBadge"></div>
+    </div>
+
+    <!-- Contaminant Results -->
+    <div class="card" id="contaminantsCard">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Detailed Analysis
+      </div>
+      <div id="contaminantsList"></div>
+    </div>
+  </div>
+
+  <!-- TREATMENT ADVISORY -->
+  <div class="treatment-panel" id="treatmentPanel">
+    <div class="card">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Treatment Advisory
+      </div>
+      <div id="treatmentList"></div>
+    </div>
+  </div>
+
+  <!-- METADATA PANEL -->
+  <div class="card" id="metaCard" style="display:none">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Scan Metadata
+    </div>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Temperature</div>
+        <div class="meta-value" id="metaTemp">--</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">pH Estimate</div>
+        <div class="meta-value" id="metaPh">--</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">TDS</div>
+        <div class="meta-value" id="metaTds">--</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Timestamp</div>
+        <div class="meta-value" id="metaTime">--</div>
+      </div>
+      <div class="meta-item full">
+        <div class="meta-label">Test ID</div>
+        <div class="meta-value" id="metaTestId">--</div>
+      </div>
+      <div class="meta-item full" id="metaGpsRow" style="display:none">
+        <div class="meta-label">GPS Coordinates</div>
+        <div class="meta-value" id="metaGps">--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div class="actions" id="actionBtns">
+    <button class="btn-action" onclick="exportPNG()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Save PNG
+    </button>
+    <button class="btn-action" onclick="shareResults()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
+      Share
+    </button>
+    <button class="btn-action" onclick="window.print()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
+      Print
+    </button>
+  </div>
+
+  <!-- SCAN HISTORY -->
+  <div class="card" id="historyCard">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/><path d="M1 12h3M3.5 4.5l2 2"/></svg>
+      Scan History
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="history-empty">No scans yet. Start your first analysis above.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========================================
+   JalSakhi Web Bluetooth Application
+   Electrochemical Water Forensics Platform
+   ======================================== */
+
+// ===== BLE Constants =====
+const BLE_SERVICE = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const BLE_TX_CHAR = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const BLE_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+// ===== Contaminant Database =====
+const CONTAMINANTS = {
+  Pb: { name: 'Lead', symbol: 'Pb', unit: 'ppb', limit: 10, bisLimit: 10, whoLimit: 10, peakV: -0.55, color: '#EF4444', icon: 'Pb' },
+  As: { name: 'Arsenic', symbol: 'As', unit: 'ppb', limit: 10, bisLimit: 10, whoLimit: 10, peakV: -0.15, color: '#F97316', icon: 'As' },
+  NH3: { name: 'Ammonia', symbol: 'NH\u2083', unit: 'mg/L', limit: 0.5, bisLimit: 0.5, whoLimit: 1.5, peakV: 0.05, color: '#2B7CD4', icon: 'NH\u2083' },
+  NO3: { name: 'Nitrate', symbol: 'NO\u2083\u207B', unit: 'mg/L', limit: 45, bisLimit: 45, whoLimit: 50, peakV: 0.25, color: '#10B981', icon: 'NO\u2083' },
+  Fe: { name: 'Iron', symbol: 'Fe', unit: 'mg/L', limit: 0.3, bisLimit: 0.3, whoLimit: 0.3, peakV: 0.45, color: '#8B5CF6', icon: 'Fe' }
+};
+
+// ===== State =====
+let state = {
+  ble: { device: null, server: null, txChar: null, rxChar: null, connected: false },
+  demo: false,
+  scanning: false,
+  dataPoints: [],       // {v: voltage, i: current}
+  results: null,        // parsed results
+  meta: { temp: null, ph: null, tds: null },
+  scanStart: 0,
+  scanProgress: 0,
+  animFrame: null,
+  demoTimer: null,
+  testId: '',
+  gps: null,
+  history: []
+};
+
+// ===== DOM Elements =====
+const $ = id => document.getElementById(id);
+const els = {};
+const elIds = ['statusDot','statusText','signalBar','btnConnect','connectBtnText',
+  'demoToggle','demoBadge','btnScan','btnStop','progressContainer','progressFill',
+  'progressText','progressTime','voltChart','chartEmpty','scanLine','resultsPanel',
+  'verdictCard','verdictIcon','verdictText','verdictSub','confidenceBadge',
+  'contaminantsList','treatmentPanel','treatmentList','metaCard','metaTemp','metaPh',
+  'metaTds','metaTime','metaTestId','metaGps','metaGpsRow','actionBtns','historyList',
+  'toast','rippleCanvas','chartLegend'];
+elIds.forEach(id => els[id] = $(id));
+
+// ===== Initialization =====
+document.addEventListener('DOMContentLoaded', () => {
+  initRipple();
+  initChart();
+  loadHistory();
+  tryGetGPS();
+  // Check BLE support
+  if (!navigator.bluetooth) {
+    showToast('Web Bluetooth not supported. Use Demo Mode.');
+  }
+});
+
+// ===== WATER RIPPLE ANIMATION =====
+function initRipple() {
+  const canvas = els.rippleCanvas;
+  const ctx = canvas.getContext('2d');
+  let ripples = [];
+  let w, h;
+
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    w = canvas.width = rect.width * window.devicePixelRatio;
+    h = canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function addRipple() {
+    ripples.push({
+      x: Math.random() * (w / window.devicePixelRatio),
+      y: Math.random() * (h / window.devicePixelRatio),
+      r: 0,
+      maxR: 30 + Math.random() * 60,
+      alpha: .3 + Math.random() * .2,
+      speed: .3 + Math.random() * .4
+    });
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, w / window.devicePixelRatio, h / window.devicePixelRatio);
+    if (Math.random() < .03) addRipple();
+    ripples = ripples.filter(r => {
+      r.r += r.speed;
+      const life = r.r / r.maxR;
+      const a = r.alpha * (1 - life);
+      if (a <= 0) return false;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${a})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      return true;
+    });
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+// ===== BLE CONNECTION =====
+async function handleConnect() {
+  if (state.ble.connected) {
+    disconnect();
+    return;
+  }
+  if (state.demo) {
+    connectDemo();
+    return;
+  }
+  try {
+    setConnectionState('connecting');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'JalSakhi' }],
+      optionalServices: [BLE_SERVICE]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+    state.ble.device = device;
+
+    const server = await device.gatt.connect();
+    state.ble.server = server;
+
+    const service = await server.getPrimaryService(BLE_SERVICE);
+    const txChar = await service.getCharacteristic(BLE_TX_CHAR);
+    const rxChar = await service.getCharacteristic(BLE_RX_CHAR);
+
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', onBLEData);
+
+    state.ble.txChar = txChar;
+    state.ble.rxChar = rxChar;
+    state.ble.connected = true;
+
+    setConnectionState('connected', device.name);
+    els.btnScan.disabled = false;
+    showToast('Connected to ' + device.name);
+  } catch (err) {
+    console.error('BLE Error:', err);
+    setConnectionState('disconnected');
+    if (err.name !== 'NotFoundError') {
+      showToast('Connection failed: ' + err.message);
+    }
+  }
+}
+
+function connectDemo() {
+  state.ble.connected = true;
+  setConnectionState('connected', 'JalSakhi-Demo');
+  els.btnScan.disabled = false;
+  showToast('Demo mode connected');
+}
+
+function disconnect() {
+  if (state.ble.device && state.ble.device.gatt.connected) {
+    state.ble.device.gatt.disconnect();
+  }
+  onDisconnect();
+}
+
+function onDisconnect() {
+  state.ble.connected = false;
+  state.ble.device = null;
+  state.ble.server = null;
+  state.ble.txChar = null;
+  state.ble.rxChar = null;
+  setConnectionState('disconnected');
+  els.btnScan.disabled = true;
+  if (state.scanning) stopScan();
+}
+
+function setConnectionState(s, name) {
+  const dot = els.statusDot;
+  const text = els.statusText;
+  const btn = els.connectBtnText;
+  const sig = els.signalBar;
+  dot.className = 'status-dot';
+  sig.className = 'signal-bar';
+
+  if (s === 'disconnected') {
+    text.innerHTML = 'Not connected';
+    btn.textContent = 'Connect to JalSakhi Device';
+    els.btnConnect.classList.remove('connected');
+  } else if (s === 'connecting') {
+    dot.classList.add('connecting');
+    text.innerHTML = 'Connecting...';
+    btn.textContent = 'Connecting...';
+  } else if (s === 'connected') {
+    dot.classList.add('connected');
+    text.innerHTML = `<span class="device-name">${name || 'JalSakhi'}</span>`;
+    btn.textContent = 'Disconnect';
+    els.btnConnect.classList.add('connected');
+    sig.classList.add(state.demo ? 's4' : 's3');
+  }
+}
+
+function toggleDemo() {
+  state.demo = !state.demo;
+  els.demoToggle.classList.toggle('active', state.demo);
+  els.demoBadge.classList.toggle('show', state.demo);
+  if (state.demo) {
+    connectDemo();
+  } else {
+    if (!state.ble.device) {
+      onDisconnect();
+    }
+  }
+}
+
+// ===== BLE DATA HANDLING =====
+function onBLEData(event) {
+  const val = new TextDecoder().decode(event.target.value);
+  const lines = val.split('\n').filter(l => l.trim());
+  lines.forEach(parseLine);
+}
+
+function parseLine(line) {
+  line = line.trim();
+  if (line.startsWith('V:')) {
+    // Data point: "V:voltage,I:current"
+    const parts = line.split(',');
+    const v = parseFloat(parts[0].substring(2));
+    const iVal = parseFloat(parts[1].substring(2));
+    if (!isNaN(v) && !isNaN(iVal)) {
+      state.dataPoints.push({ v, i: iVal });
+    }
+  } else if (line.startsWith('META:')) {
+    // Metadata: "META:temp=25.3,ph=7.1,tds=340"
+    const meta = line.substring(5);
+    meta.split(',').forEach(pair => {
+      const [k, val] = pair.split('=');
+      if (k === 'temp') state.meta.temp = parseFloat(val);
+      else if (k === 'ph') state.meta.ph = parseFloat(val);
+      else if (k === 'tds') state.meta.tds = parseFloat(val);
+    });
+    updateMeta();
+  } else if (line.startsWith('STATUS:')) {
+    const status = line.substring(7);
+    showToast('Device status: ' + status);
+  } else if (line === 'SCAN_COMPLETE') {
+    onScanComplete();
+  } else if (line.startsWith('RESULT:')) {
+    // "RESULT:Pb=15.2ppb,As=8.1ppb,NH3=1.8mg/L,NO3=12.5mg/L,Fe=0.8mg/L"
+    parseResults(line.substring(7));
+  }
+}
+
+function parseResults(resultStr) {
+  state.results = {};
+  resultStr.split(',').forEach(part => {
+    const match = part.match(/(\w+)=([\d.]+)(ppb|mg\/L)/);
+    if (match) {
+      state.results[match[1]] = { value: parseFloat(match[2]), unit: match[3] };
+    }
+  });
+}
+
+async function sendCommand(cmd) {
+  if (state.demo) {
+    showToast('Command sent: ' + cmd);
+    if (cmd === 'STATUS') showToast('Status: IDLE (Demo)');
+    if (cmd === 'CALIBRATE') showToast('Calibration complete (Demo)');
+    return;
+  }
+  if (!state.ble.rxChar) {
+    showToast('Not connected');
+    return;
+  }
+  try {
+    const encoder = new TextEncoder();
+    await state.ble.rxChar.writeValue(encoder.encode(cmd + '\n'));
+    showToast('Sent: ' + cmd);
+  } catch (err) {
+    showToast('Send failed: ' + err.message);
+  }
+}
+
+// ===== SCAN CONTROL =====
+async function startScan() {
+  if (state.scanning) return;
+  resetScanState();
+  state.scanning = true;
+  state.scanStart = Date.now();
+  state.testId = generateTestId();
+
+  // UI updates
+  els.btnScan.disabled = true;
+  els.btnScan.classList.add('scanning');
+  els.btnStop.classList.add('show');
+  els.progressContainer.classList.add('show');
+  els.chartEmpty.classList.add('hidden');
+  els.scanLine.classList.add('active');
+  els.resultsPanel.classList.remove('show');
+  els.treatmentPanel.classList.remove('show');
+  els.actionBtns.classList.remove('show');
+  els.metaCard.style.display = 'none';
+
+  playScanSound();
+
+  if (state.demo) {
+    sendCommand('START_SCAN');
+  } else {
+    await sendCommand('START_SCAN');
+  }
+
+  // Start animation loop
+  animateChart();
+}
+
+function startDemo(type) {
+  if (state.scanning) return;
+  if (!state.demo) {
+    state.demo = true;
+    els.demoToggle.classList.add('active');
+    els.demoBadge.classList.add('show');
+    connectDemo();
+  }
+
+  resetScanState();
+  state.scanning = true;
+  state.scanStart = Date.now();
+  state.testId = generateTestId();
+
+  // UI updates
+  els.btnScan.disabled = true;
+  els.btnScan.classList.add('scanning');
+  els.btnStop.classList.add('show');
+  els.progressContainer.classList.add('show');
+  els.chartEmpty.classList.add('hidden');
+  els.scanLine.classList.add('active');
+  els.resultsPanel.classList.remove('show');
+  els.treatmentPanel.classList.remove('show');
+  els.actionBtns.classList.remove('show');
+  els.metaCard.style.display = 'none';
+
+  playScanSound();
+
+  // Generate demo data
+  const isClean = type === 'clean';
+  generateDemoData(isClean);
+}
+
+function stopScan() {
+  state.scanning = false;
+  if (state.demoTimer) clearTimeout(state.demoTimer);
+  if (state.animFrame) cancelAnimationFrame(state.animFrame);
+
+  els.btnScan.disabled = false;
+  els.btnScan.classList.remove('scanning');
+  els.btnStop.classList.remove('show');
+  els.progressContainer.classList.remove('show');
+  els.scanLine.classList.remove('active');
+
+  sendCommand('STOP');
+  showToast('Scan stopped');
+}
+
+function resetScanState() {
+  state.dataPoints = [];
+  state.results = null;
+  state.meta = { temp: null, ph: null, tds: null };
+  state.scanProgress = 0;
+  els.progressFill.style.width = '0%';
+}
+
+function onScanComplete() {
+  state.scanning = false;
+  if (state.animFrame) cancelAnimationFrame(state.animFrame);
+
+  els.btnScan.disabled = false;
+  els.btnScan.classList.remove('scanning');
+  els.btnStop.classList.remove('show');
+  els.scanLine.classList.remove('active');
+  els.progressFill.style.width = '100%';
+  els.progressText.textContent = 'Analysis complete';
+  els.progressTime.textContent = '';
+
+  playCompleteSound();
+
+  // Small delay then show results
+  setTimeout(() => {
+    els.progressContainer.classList.remove('show');
+    displayResults();
+    updateMeta();
+    els.metaCard.style.display = '';
+    els.actionBtns.classList.add('show');
+    saveToHistory();
+  }, 600);
+}
+
+// ===== DEMO DATA GENERATION =====
+function generateDemoData(isClean) {
+  const totalPoints = 180;
+  const vMin = -1.2, vMax = 0.6;
+  const step = (vMax - vMin) / totalPoints;
+  const demoData = [];
+  const scanDuration = 15000; // 15 seconds for demo
+  const interval = scanDuration / totalPoints;
+
+  // Set demo metadata
+  state.meta.temp = 24.5 + Math.random() * 3;
+  state.meta.ph = 6.8 + Math.random() * 1.2;
+  state.meta.tds = 200 + Math.random() * 400;
+
+  // Peak parameters for contaminated water
+  const peaks = isClean ? [] : [
+    { center: -0.55, height: 18 + Math.random() * 8, width: 0.06 },   // Pb
+    { center: -0.15, height: 10 + Math.random() * 5, width: 0.05 },   // As
+    { center: 0.05,  height: 6 + Math.random() * 4,  width: 0.07 },   // NH3
+    { center: 0.25,  height: 14 + Math.random() * 8, width: 0.06 },   // NO3
+    { center: 0.45,  height: 4 + Math.random() * 3,  width: 0.05 },   // Fe
+  ];
+
+  for (let idx = 0; idx < totalPoints; idx++) {
+    const v = vMin + idx * step;
+    // Baseline: slight parabolic curve + noise
+    let current = -0.5 + 0.3 * v + 0.15 * v * v + (Math.random() - 0.5) * 0.4;
+
+    // Add Gaussian peaks
+    peaks.forEach(p => {
+      const exponent = -((v - p.center) ** 2) / (2 * p.width ** 2);
+      current += p.height * Math.exp(exponent);
+    });
+
+    demoData.push({ v, i: current });
+  }
+
+  // Set results for demo
+  if (isClean) {
+    state.results = {
+      Pb: { value: 1.2, unit: 'ppb' },
+      As: { value: 0.5, unit: 'ppb' },
+      NH3: { value: 0.08, unit: 'mg/L' },
+      NO3: { value: 3.2, unit: 'mg/L' },
+      Fe: { value: 0.05, unit: 'mg/L' }
+    };
+  } else {
+    state.results = {
+      Pb: { value: (15 + Math.random() * 10).toFixed(1), unit: 'ppb' },
+      As: { value: (8 + Math.random() * 7).toFixed(1), unit: 'ppb' },
+      NH3: { value: (1.5 + Math.random() * 1.5).toFixed(1), unit: 'mg/L' },
+      NO3: { value: (40 + Math.random() * 20).toFixed(1), unit: 'mg/L' },
+      Fe: { value: (0.5 + Math.random() * 0.5).toFixed(1), unit: 'mg/L' }
+    };
+    // Convert string values
+    Object.keys(state.results).forEach(k => {
+      state.results[k].value = parseFloat(state.results[k].value);
+    });
+  }
+
+  // Stream data at realistic pace
+  let dataIdx = 0;
+  function streamNext() {
+    if (!state.scanning || dataIdx >= demoData.length) {
+      if (state.scanning) {
+        parseLine('SCAN_COMPLETE');
+      }
+      return;
+    }
+    // Add 1-3 points per tick
+    const batch = Math.min(2, demoData.length - dataIdx);
+    for (let b = 0; b < batch; b++) {
+      state.dataPoints.push(demoData[dataIdx]);
+      dataIdx++;
+    }
+
+    state.scanProgress = dataIdx / demoData.length;
+    updateProgress();
+
+    state.demoTimer = setTimeout(streamNext, interval * batch);
+  }
+  streamNext();
+  animateChart();
+}
+
+// ===== PROGRESS =====
+function updateProgress() {
+  const pct = Math.round(state.scanProgress * 100);
+  els.progressFill.style.width = pct + '%';
+  els.progressText.textContent = pct < 100 ? 'Scanning... ' + pct + '%' : 'Processing...';
+
+  const elapsed = (Date.now() - state.scanStart) / 1000;
+  if (state.scanProgress > 0.05) {
+    const total = elapsed / state.scanProgress;
+    const remaining = Math.max(0, total - elapsed);
+    els.progressTime.textContent = remaining > 1 ? Math.ceil(remaining) + 's remaining' : 'Almost done...';
+  }
+}
+
+// ===== CHART RENDERING =====
+let chartCtx, chartW, chartH, dpr;
+const chartPadding = { top: 20, right: 20, bottom: 40, left: 55 };
+
+function initChart() {
+  const canvas = els.voltChart;
+  dpr = window.devicePixelRatio || 1;
+
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    chartW = rect.width;
+    chartH = parseInt(getComputedStyle(canvas).height);
+    canvas.width = chartW * dpr;
+    canvas.height = chartH * dpr;
+    canvas.style.width = chartW + 'px';
+    canvas.style.height = chartH + 'px';
+    chartCtx = canvas.getContext('2d');
+    chartCtx.scale(dpr, dpr);
+    drawChart();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+}
+
+function drawChart() {
+  const ctx = chartCtx;
+  if (!ctx) return;
+  const w = chartW, h = chartH;
+  const p = chartPadding;
+  const plotW = w - p.left - p.right;
+  const plotH = h - p.top - p.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Voltage range
+  const vMin = -1.2, vMax = 0.6;
+  // Current range (auto-scale)
+  let iMin = -2, iMax = 5;
+  if (state.dataPoints.length > 0) {
+    const currents = state.dataPoints.map(d => d.i);
+    iMin = Math.min(...currents) - 1;
+    iMax = Math.max(...currents) + 1;
+    if (iMax - iMin < 3) { iMin -= 1; iMax += 1; }
+  }
+
+  function toX(v) { return p.left + ((v - vMin) / (vMax - vMin)) * plotW; }
+  function toY(i) { return p.top + plotH - ((i - iMin) / (iMax - iMin)) * plotH; }
+
+  // Grid
+  ctx.strokeStyle = '#E5E7EB';
+  ctx.lineWidth = 0.5;
+
+  // Vertical grid (voltage)
+  const vTicks = [];
+  for (let v = -1.2; v <= 0.6; v += 0.2) vTicks.push(Math.round(v * 10) / 10);
+  vTicks.forEach(v => {
+    const x = toX(v);
+    ctx.beginPath();
+    ctx.moveTo(x, p.top);
+    ctx.lineTo(x, p.top + plotH);
+    ctx.stroke();
+  });
+
+  // Horizontal grid (current)
+  const iRange = iMax - iMin;
+  const iStep = niceStep(iRange, 5);
+  const iStart = Math.ceil(iMin / iStep) * iStep;
+  for (let i = iStart; i <= iMax; i += iStep) {
+    const y = toY(i);
+    ctx.beginPath();
+    ctx.moveTo(p.left, y);
+    ctx.lineTo(p.left + plotW, y);
+    ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#9CA3AF';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(p.left, p.top);
+  ctx.lineTo(p.left, p.top + plotH);
+  ctx.lineTo(p.left + plotW, p.top + plotH);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  vTicks.forEach(v => {
+    ctx.fillText(v.toFixed(1), toX(v), p.top + plotH + 6);
+  });
+  // X-axis title
+  ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  ctx.fillText('Potential (V)', p.left + plotW / 2, p.top + plotH + 24);
+
+  // Y-axis labels
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = '10px ' + getComputedStyle(document.body).fontFamily;
+  for (let i = iStart; i <= iMax; i += iStep) {
+    ctx.fillText(i.toFixed(1), p.left - 6, toY(i));
+  }
+  // Y-axis title
+  ctx.save();
+  ctx.translate(12, p.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  ctx.fillText('Current (\u00B5A)', 0, 0);
+  ctx.restore();
+
+  // Data line
+  if (state.dataPoints.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#2B7CD4';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // Sort by voltage for proper rendering
+    const sorted = [...state.dataPoints].sort((a, b) => a.v - b.v);
+
+    ctx.moveTo(toX(sorted[0].v), toY(sorted[0].i));
+    for (let idx = 1; idx < sorted.length; idx++) {
+      ctx.lineTo(toX(sorted[idx].v), toY(sorted[idx].i));
+    }
+    ctx.stroke();
+
+    // Glow effect
+    ctx.strokeStyle = 'rgba(43,124,212,0.15)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(toX(sorted[0].v), toY(sorted[0].i));
+    for (let idx = 1; idx < sorted.length; idx++) {
+      ctx.lineTo(toX(sorted[idx].v), toY(sorted[idx].i));
+    }
+    ctx.stroke();
+  }
+
+  // Peak markers (after scan complete)
+  if (state.results && !state.scanning) {
+    Object.entries(state.results).forEach(([key, res]) => {
+      const info = CONTAMINANTS[key];
+      if (!info) return;
+      const peakV = info.peakV;
+      const x = toX(peakV);
+
+      // Find closest data point to get Y position
+      let closest = state.dataPoints[0];
+      let minDist = Infinity;
+      state.dataPoints.forEach(dp => {
+        const d = Math.abs(dp.v - peakV);
+        if (d < minDist) { minDist = d; closest = dp; }
+      });
+
+      if (closest && res.value > 0) {
+        const y = toY(closest.i);
+
+        // Vertical dashed line
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = info.color + '80';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, p.top);
+        ctx.lineTo(x, p.top + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Peak dot
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = info.color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Label
+        const labelY = Math.max(p.top + 12, y - 18);
+        ctx.fillStyle = info.color;
+        ctx.font = 'bold 9px ' + getComputedStyle(document.body).fontFamily;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        // Background for label
+        const labelText = info.symbol + ': ' + res.value + res.unit;
+        const tm = ctx.measureText(labelText);
+        const lw = tm.width + 8;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x - lw / 2, labelY - 14, lw, 14);
+        ctx.fillStyle = info.color;
+        ctx.fillText(labelText, x, labelY);
+      }
+    });
+  }
+}
+
+function niceStep(range, maxTicks) {
+  const rough = range / maxTicks;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  let step;
+  if (norm < 1.5) step = 1;
+  else if (norm < 3) step = 2;
+  else if (norm < 7) step = 5;
+  else step = 10;
+  return step * mag;
+}
+
+function animateChart() {
+  drawChart();
+  if (state.scanning) {
+    state.animFrame = requestAnimationFrame(animateChart);
+  }
+}
+
+// ===== RESULTS DISPLAY =====
+function displayResults() {
+  if (!state.results) return;
+
+  const panel = els.resultsPanel;
+  panel.classList.add('show');
+
+  // Determine overall verdict
+  let maxSeverity = 0; // 0=safe, 1=warning, 2=unsafe
+  Object.entries(state.results).forEach(([key, res]) => {
+    const info = CONTAMINANTS[key];
+    if (!info) return;
+    const ratio = res.value / info.limit;
+    if (ratio > 1.5) maxSeverity = Math.max(maxSeverity, 2);
+    else if (ratio > 0.8) maxSeverity = Math.max(maxSeverity, 1);
+  });
+
+  // Verdict card
+  const verdictCard = els.verdictCard;
+  verdictCard.className = 'card verdict-card';
+  if (maxSeverity === 0) {
+    verdictCard.classList.add('verdict-safe');
+    els.verdictIcon.textContent = '\u2705';
+    els.verdictText.textContent = 'Water is Safe';
+    els.verdictSub.textContent = 'All parameters within safe limits';
+  } else if (maxSeverity === 1) {
+    verdictCard.classList.add('verdict-warning');
+    els.verdictIcon.textContent = '\u26A0\uFE0F';
+    els.verdictText.textContent = 'Caution Advised';
+    els.verdictSub.textContent = 'Some parameters approaching limits';
+  } else {
+    verdictCard.classList.add('verdict-unsafe');
+    els.verdictIcon.textContent = '\u274C';
+    els.verdictText.textContent = 'Water is Unsafe';
+    els.verdictSub.textContent = 'Contaminants exceed safe limits';
+  }
+
+  // Confidence badge
+  const confidence = state.demo ? 'DEMO' : (state.dataPoints.length > 100 ? 'HIGH' : state.dataPoints.length > 50 ? 'MEDIUM' : 'LOW');
+  const confBadge = els.confidenceBadge;
+  confBadge.textContent = 'Confidence: ' + confidence;
+  confBadge.className = 'confidence';
+  if (confidence === 'HIGH') confBadge.classList.add('confidence-high');
+  else if (confidence === 'MEDIUM' || confidence === 'DEMO') confBadge.classList.add('confidence-medium');
+  else confBadge.classList.add('confidence-low');
+
+  // Contaminant cards
+  const list = els.contaminantsList;
+  list.innerHTML = '';
+  Object.entries(state.results).forEach(([key, res], idx) => {
+    const info = CONTAMINANTS[key];
+    if (!info) return;
+    const ratio = res.value / info.limit;
+    let severity = ratio > 1.5 ? 'unsafe' : ratio > 0.8 ? 'warning' : 'safe';
+    const barWidth = Math.min(100, (ratio * 100));
+    const barColor = severity === 'safe' ? 'var(--green)' : severity === 'warning' ? 'var(--yellow)' : 'var(--red)';
+
+    const card = document.createElement('div');
+    card.className = 'contaminant-card';
+    card.style.animationDelay = (idx * 0.1) + 's';
+    card.style.animation = 'slideUp .5s ease ' + (idx * 0.1) + 's both';
+    card.innerHTML = `
+      <div class="contam-icon" style="background:${info.color}">${info.icon}</div>
+      <div class="contam-info">
+        <div class="contam-name">${info.name}</div>
+        <div class="contam-value" style="color:${severity === 'safe' ? 'var(--gray-800)' : severity === 'warning' ? 'var(--yellow-dark)' : 'var(--red-dark)'}">
+          <span class="number-animate">${res.value}</span> ${res.unit}
+        </div>
+        <div class="contam-limit">WHO limit: ${info.whoLimit} ${info.unit} | BIS limit: ${info.bisLimit} ${info.unit}</div>
+        <div class="contam-bar"><div class="contam-bar-fill" style="width:0%;background:${barColor}" data-width="${barWidth}"></div></div>
+      </div>
+      <div class="badge badge-${severity}">${severity.toUpperCase()}</div>
+    `;
+    list.appendChild(card);
+  });
+
+  // Animate bars after render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      document.querySelectorAll('.contam-bar-fill').forEach(bar => {
+        bar.style.width = bar.dataset.width + '%';
+      });
+    }, 100);
+  });
+
+  // Treatment advisory
+  displayTreatment();
+
+  // Draw final chart with markers
+  drawChart();
+}
+
+function displayTreatment() {
+  if (!state.results) return;
+
+  const treatments = [];
+
+  Object.entries(state.results).forEach(([key, res]) => {
+    const info = CONTAMINANTS[key];
+    if (!info || res.value <= info.limit) return;
+
+    if (key === 'Pb') {
+      treatments.push({
+        title: 'Lead Contamination Detected',
+        text: `Lead level ${res.value} ppb exceeds safe limit of ${info.limit} ppb. Do NOT use this water for drinking or cooking. Use an NSF-certified lead removal filter or get water from a verified safe source. Boiling does NOT remove lead.`
+      });
+    } else if (key === 'As') {
+      treatments.push({
+        title: 'Arsenic Contamination Detected',
+        text: `Arsenic level ${res.value} ppb exceeds safe limit of ${info.limit} ppb. Stop using this water immediately. Use an arsenic removal filter (iron-based adsorption). Contact local authorities. Boiling does NOT remove arsenic.`
+      });
+    } else if (key === 'NH3') {
+      const dose = (res.value * 7.6).toFixed(1); // Breakpoint chlorination
+      treatments.push({
+        title: 'Ammonia Detected - Chlorination Advised',
+        text: `Ammonia level ${res.value} mg/L exceeds safe limit. For breakpoint chlorination, use approximately ${dose} mg/L of chlorine (${(dose * 0.001 * 20).toFixed(2)} mL of bleach per 20L bucket). Allow 30 min contact time. This water may indicate sewage contamination - investigate the source.`
+      });
+    } else if (key === 'NO3') {
+      treatments.push({
+        title: 'Nitrate Contamination',
+        text: `Nitrate level ${res.value} mg/L exceeds safe limit of ${info.limit} mg/L. Especially dangerous for infants (Blue Baby Syndrome). Use RO filtration or ion exchange filter. Boiling actually concentrates nitrate. Possible source: fertilizer runoff or septic tank leachate.`
+      });
+    } else if (key === 'Fe') {
+      treatments.push({
+        title: 'High Iron Content',
+        text: `Iron level ${res.value} mg/L exceeds recommended limit of ${info.limit} mg/L. While not immediately dangerous, it causes taste and staining issues. Use aeration + sand filtration or an iron removal filter. Let water stand for 24 hours and filter the settled particles.`
+      });
+    }
+  });
+
+  const panel = els.treatmentPanel;
+  const list = els.treatmentList;
+  list.innerHTML = '';
+
+  if (treatments.length > 0) {
+    treatments.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'treatment-card';
+      card.innerHTML = `<div class="treatment-title">${t.title}</div><div class="treatment-text">${t.text}</div>`;
+      list.appendChild(card);
+    });
+    panel.classList.add('show');
+  } else {
+    panel.classList.remove('show');
+  }
+}
+
+// ===== METADATA =====
+function updateMeta() {
+  if (state.meta.temp !== null) els.metaTemp.textContent = state.meta.temp.toFixed(1) + ' \u00B0C';
+  if (state.meta.ph !== null) els.metaPh.textContent = state.meta.ph.toFixed(1);
+  if (state.meta.tds !== null) els.metaTds.textContent = Math.round(state.meta.tds) + ' ppm';
+  els.metaTime.textContent = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  els.metaTestId.textContent = state.testId;
+  if (state.gps) {
+    els.metaGps.textContent = state.gps.lat.toFixed(5) + ', ' + state.gps.lon.toFixed(5);
+    els.metaGpsRow.style.display = '';
+  }
+}
+
+function generateTestId() {
+  const now = new Date();
+  const d = now.toISOString().slice(0,10).replace(/-/g,'');
+  const r = Math.random().toString(36).substring(2,6).toUpperCase();
+  return 'JS-' + d + '-' + r;
+}
+
+function tryGetGPS() {
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      state.gps = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    }, () => {}, { timeout: 5000 });
+  }
+}
+
+// ===== SOUND EFFECTS =====
+let audioCtx;
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+function playScanSound() {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch (e) {}
+}
+
+function playCompleteSound() {
+  try {
+    const ctx = getAudioCtx();
+    [0, 0.12, 0.24].forEach((delay, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime([660, 880, 1320][i], ctx.currentTime + delay);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.2);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.2);
+    });
+  } catch (e) {}
+}
+
+// ===== EXPORT & SHARE =====
+function exportPNG() {
+  try {
+    // Create a temporary full-page canvas capture
+    const chartCanvas = els.voltChart;
+    const link = document.createElement('a');
+    link.download = 'JalSakhi-' + state.testId + '.png';
+    link.href = chartCanvas.toDataURL('image/png');
+    link.click();
+    showToast('Chart saved as PNG');
+  } catch (e) {
+    showToast('Export failed: ' + e.message);
+  }
+}
+
+async function shareResults() {
+  if (!state.results) { showToast('No results to share'); return; }
+
+  let text = 'JalSakhi Water Analysis Report\n';
+  text += 'Test ID: ' + state.testId + '\n';
+  text += 'Date: ' + new Date().toLocaleString('en-IN') + '\n\n';
+
+  Object.entries(state.results).forEach(([key, res]) => {
+    const info = CONTAMINANTS[key];
+    if (!info) return;
+    const status = res.value > info.limit * 1.5 ? 'UNSAFE' : res.value > info.limit * 0.8 ? 'WARNING' : 'SAFE';
+    text += `${info.name} (${info.symbol}): ${res.value} ${res.unit} [${status}] (Limit: ${info.limit} ${info.unit})\n`;
+  });
+
+  if (state.meta.temp) text += `\nTemp: ${state.meta.temp.toFixed(1)}\u00B0C | pH: ${state.meta.ph?.toFixed(1)} | TDS: ${Math.round(state.meta.tds || 0)} ppm`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'JalSakhi Water Report', text });
+      showToast('Shared successfully');
+    } catch (e) {
+      if (e.name !== 'AbortError') fallbackCopy(text);
+    }
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Results copied to clipboard');
+  }).catch(() => {
+    showToast('Could not share');
+  });
+}
+
+// ===== HISTORY =====
+function loadHistory() {
+  try {
+    const saved = localStorage.getItem('jalsakhi_history');
+    if (saved) state.history = JSON.parse(saved);
+  } catch (e) {}
+  renderHistory();
+}
+
+function saveToHistory() {
+  if (!state.results) return;
+
+  let maxSeverity = 0;
+  Object.entries(state.results).forEach(([key, res]) => {
+    const info = CONTAMINANTS[key];
+    if (!info) return;
+    const ratio = res.value / info.limit;
+    if (ratio > 1.5) maxSeverity = Math.max(maxSeverity, 2);
+    else if (ratio > 0.8) maxSeverity = Math.max(maxSeverity, 1);
+  });
+
+  const entry = {
+    id: state.testId,
+    date: new Date().toISOString(),
+    results: state.results,
+    meta: { ...state.meta },
+    severity: maxSeverity,
+    demo: state.demo,
+    gps: state.gps ? { ...state.gps } : null
+  };
+
+  state.history.unshift(entry);
+  if (state.history.length > 50) state.history = state.history.slice(0, 50);
+
+  try {
+    localStorage.setItem('jalsakhi_history', JSON.stringify(state.history));
+  } catch (e) {}
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = els.historyList;
+  if (state.history.length === 0) {
+    list.innerHTML = '<div class="history-empty">No scans yet. Start your first analysis above.</div>';
+    return;
+  }
+  list.innerHTML = state.history.map((entry, idx) => {
+    const dotColor = entry.severity === 0 ? 'var(--green)' : entry.severity === 1 ? 'var(--yellow)' : 'var(--red)';
+    const verdict = entry.severity === 0 ? 'Safe' : entry.severity === 1 ? 'Caution' : 'Unsafe';
+    const dateStr = new Date(entry.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const demoTag = entry.demo ? ' <span style="font-size:.6rem;color:var(--gray-400)">[DEMO]</span>' : '';
+    return `<div class="history-item" onclick="loadHistory${idx === 0 ? '' : ''}Entry(${idx})">
+      <div class="history-dot" style="background:${dotColor}"></div>
+      <div class="history-info">
+        <div class="history-date">${dateStr}${demoTag}</div>
+        <div class="history-result" style="color:${dotColor}">${verdict} - ${entry.id}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function loadHistoryEntry(idx) {
+  const entry = state.history[idx];
+  if (!entry) return;
+  state.results = entry.results;
+  state.meta = entry.meta || { temp: null, ph: null, tds: null };
+  state.testId = entry.id;
+  state.dataPoints = []; // No voltammogram data saved
+
+  displayResults();
+  updateMeta();
+  els.metaCard.style.display = '';
+  els.actionBtns.classList.add('show');
+  els.chartEmpty.classList.remove('hidden');
+
+  showToast('Loaded scan: ' + entry.id);
+
+  // Scroll to results
+  els.resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ===== TOAST =====
+function showToast(msg, duration = 3000) {
+  const toast = els.toast;
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+</script>
+</body>
+</html>
