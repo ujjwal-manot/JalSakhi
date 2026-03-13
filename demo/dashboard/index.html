@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JalSakhi - District Water Intelligence Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0D1B2A; color: #E0E0E0; }
+
+        .header {
+            background: linear-gradient(135deg, #0D2B45 0%, #1B6B93 100%);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 3px solid #00A8B5;
+        }
+        .header h1 { font-size: 22px; color: #fff; }
+        .header h1 span { color: #00A8B5; }
+        .header .meta { font-size: 12px; color: #8CB4C9; }
+        .header .live-badge {
+            background: #E83E3E;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        .main { display: grid; grid-template-columns: 280px 1fr 300px; height: calc(100vh - 55px); }
+
+        /* Left Panel */
+        .left-panel {
+            background: #112240;
+            padding: 16px;
+            overflow-y: auto;
+            border-right: 1px solid #1B3A5C;
+        }
+        .panel-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #00A8B5;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+        .stat-card {
+            background: #1A3350;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            border-left: 3px solid #00A8B5;
+        }
+        .stat-card.warning { border-left-color: #FF6B35; }
+        .stat-card.danger { border-left-color: #E83E3E; }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: #fff; }
+        .stat-card .label { font-size: 11px; color: #8CB4C9; margin-top: 2px; }
+        .stat-card .change { font-size: 11px; margin-top: 4px; }
+        .stat-card .change.up { color: #E83E3E; }
+        .stat-card .change.down { color: #2EA06A; }
+
+        .district-select {
+            width: 100%;
+            padding: 8px;
+            background: #1A3350;
+            color: #fff;
+            border: 1px solid #1B3A5C;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+
+        .contaminant-list { margin-top: 12px; }
+        .contam-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: #1A3350;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .contam-item .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .contam-item .level { font-weight: 600; }
+        .safe { color: #2EA06A; }
+        .moderate { color: #FF6B35; }
+        .danger { color: #E83E3E; }
+
+        /* Map */
+        .map-container { position: relative; }
+        #map { width: 100%; height: 100%; }
+        .map-overlay {
+            position: absolute;
+            top: 10px; left: 10px;
+            background: rgba(17, 34, 64, 0.9);
+            padding: 10px 14px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 12px;
+            border: 1px solid #1B3A5C;
+        }
+        .map-overlay h3 { color: #00A8B5; font-size: 13px; margin-bottom: 6px; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+            font-size: 11px;
+        }
+        .legend-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            margin-right: 8px;
+            opacity: 0.8;
+        }
+
+        /* Right Panel */
+        .right-panel {
+            background: #112240;
+            padding: 16px;
+            overflow-y: auto;
+            border-left: 1px solid #1B3A5C;
+        }
+        .alert-item {
+            background: #1A3350;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid #E83E3E;
+            font-size: 12px;
+        }
+        .alert-item.warn { border-left-color: #FF6B35; }
+        .alert-item .time { color: #5A7A99; font-size: 10px; margin-top: 4px; }
+        .alert-item .source { color: #00A8B5; font-weight: 600; }
+
+        .recent-test {
+            background: #1A3350;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .recent-test .tester { color: #8CB4C9; }
+        .recent-test .result { font-weight: 600; }
+        .recent-test .result.pass { color: #2EA06A; }
+        .recent-test .result.fail { color: #E83E3E; }
+
+        .shg-progress {
+            background: #1A3350;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .progress-bar {
+            height: 6px;
+            background: #0D2B45;
+            border-radius: 3px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, #00A8B5, #2EA06A);
+            transition: width 1s ease;
+        }
+        .shg-label { font-size: 12px; display: flex; justify-content: space-between; }
+
+        .treatment-rec {
+            background: #1A3350;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .treatment-rec h4 { color: #FF6B35; font-size: 12px; margin-bottom: 4px; }
+        .treatment-rec .dose { color: #00A8B5; font-weight: 600; }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main { grid-template-columns: 1fr; }
+            .left-panel, .right-panel { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Jal<span>Sakhi</span> District Water Intelligence</h1>
+            <div class="meta">Bhagalpur District, Bihar | Jal Jeevan Mission Integration</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <div class="live-badge">LIVE</div>
+            <div style="text-align:right;">
+                <div style="font-size:12px;color:#8CB4C9;">Last sync: 2 min ago</div>
+                <div style="font-size:11px;color:#5A7A99;">47 Jal Sakhis active today</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <select class="district-select">
+                <option>Bhagalpur District, Bihar</option>
+                <option>Unnao District, UP</option>
+                <option>Guntur District, AP</option>
+            </select>
+
+            <div class="panel-title">District Overview</div>
+
+            <div class="stat-card">
+                <div class="value">1,247</div>
+                <div class="label">Total Tests This Month</div>
+                <div class="change down">+23% vs last month</div>
+            </div>
+
+            <div class="stat-card warning">
+                <div class="value">342</div>
+                <div class="label">Sources Tested</div>
+                <div class="change">Coverage: 67% of mapped sources</div>
+            </div>
+
+            <div class="stat-card danger">
+                <div class="value">18.4%</div>
+                <div class="label">Sources Above WHO Limits</div>
+                <div class="change up">Ammonia primary concern</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="value">94.2%</div>
+                <div class="label">NABL Lab Correlation</div>
+                <div class="change down">Target: >90%</div>
+            </div>
+
+            <div class="panel-title" style="margin-top:16px;">Contaminant Summary</div>
+            <div class="contaminant-list">
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#E83E3E;"></span>Ammonia (NH3)</div>
+                    <div class="level danger">1.8 mg/L avg</div>
+                </div>
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#FF6B35;"></span>Iron (Fe)</div>
+                    <div class="level moderate">0.42 mg/L avg</div>
+                </div>
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#FF6B35;"></span>Nitrate (NO3)</div>
+                    <div class="level moderate">32 mg/L avg</div>
+                </div>
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#2EA06A;"></span>Lead (Pb)</div>
+                    <div class="level safe">< 5 ppb</div>
+                </div>
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#2EA06A;"></span>Arsenic (As)</div>
+                    <div class="level safe">< 8 ppb</div>
+                </div>
+                <div class="contam-item">
+                    <div><span class="dot" style="background:#2EA06A;"></span>Fluoride (F)</div>
+                    <div class="level safe">0.7 mg/L avg</div>
+                </div>
+            </div>
+
+            <div class="panel-title" style="margin-top:16px;">Treatment Advisory</div>
+            <div class="treatment-rec">
+                <h4>Ammonia: 0.5 - 1.5 mg/L zones</h4>
+                <div>Breakpoint chlorination recommended</div>
+                <div class="dose">Dose: 7.6 mg/L Cl2 per mg/L NH3</div>
+            </div>
+            <div class="treatment-rec">
+                <h4>Ammonia: >1.5 mg/L zones (3 villages)</h4>
+                <div>Activated carbon + aeration required</div>
+                <div class="dose">DO NOT CONSUME - redirect to safe source</div>
+            </div>
+        </div>
+
+        <!-- Map -->
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="map-overlay">
+                <h3>Contamination Heatmap</h3>
+                <div class="legend-item"><div class="legend-dot" style="background:#2EA06A;"></div> Safe (below WHO limits)</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#FFD700;"></div> Moderate (approaching limits)</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#FF6B35;"></div> Elevated (above limits)</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#E83E3E;"></div> Critical (>3x WHO limits)</div>
+                <div style="margin-top:8px;font-size:10px;color:#5A7A99;">
+                    Kriging interpolation from 342 test points<br>
+                    Updated: 13 March 2026, 14:30 IST
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <div class="panel-title">Active Alerts</div>
+            <div class="alert-item">
+                <div><span class="source">Sultanpur Borewell #3</span> - Ammonia spike: <strong style="color:#E83E3E;">3.2 mg/L</strong></div>
+                <div style="color:#E83E3E;font-weight:600;">DO NOT CONSUME</div>
+                <div class="time">12 min ago - Jal Sakhi: Meena Devi</div>
+            </div>
+            <div class="alert-item warn">
+                <div><span class="source">Nathnagar Ward 7 Tap</span> - Chlorine residual drop: <strong style="color:#FF6B35;">0.02 mg/L</strong></div>
+                <div style="color:#FF6B35;">Possible pipeline intrusion</div>
+                <div class="time">47 min ago - Jal Sakhi: Rani Kumari</div>
+            </div>
+            <div class="alert-item warn">
+                <div><span class="source">Kahalgaon Block</span> - Iron elevated across 4 sources: <strong style="color:#FF6B35;">0.8 mg/L avg</strong></div>
+                <div class="time">2 hours ago - Multiple testers</div>
+            </div>
+
+            <div class="panel-title" style="margin-top:20px;">Recent Tests</div>
+            <div class="recent-test">
+                <div>
+                    <div>Sabour GP - Well #12</div>
+                    <div class="tester">Sunita Devi, SHG Shakti</div>
+                </div>
+                <div class="result pass">SAFE</div>
+            </div>
+            <div class="recent-test">
+                <div>
+                    <div>Pirpainti - Borewell #5</div>
+                    <div class="tester">Anita Singh, SHG Pragati</div>
+                </div>
+                <div class="result fail">NH3: 2.1 mg/L</div>
+            </div>
+            <div class="recent-test">
+                <div>
+                    <div>Gopalpur - Hand Pump</div>
+                    <div class="tester">Kavita Yadav, SHG Udaan</div>
+                </div>
+                <div class="result pass">SAFE</div>
+            </div>
+            <div class="recent-test">
+                <div>
+                    <div>Naugachia - Tap Water</div>
+                    <div class="tester">Priya Gupta, SHG Jyoti</div>
+                </div>
+                <div class="result fail">Fe: 0.9 mg/L</div>
+            </div>
+            <div class="recent-test">
+                <div>
+                    <div>Kahalgaon - River Ghat</div>
+                    <div class="tester">Lakshmi Devi, SHG Nari</div>
+                </div>
+                <div class="result pass">SAFE</div>
+            </div>
+
+            <div class="panel-title" style="margin-top:20px;">SHG Weekly Progress</div>
+            <div class="shg-progress">
+                <div class="shg-label"><span>SHG Shakti (Sabour)</span><span style="color:#2EA06A;">12/12 tests</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:100%;"></div></div>
+            </div>
+            <div class="shg-progress">
+                <div class="shg-label"><span>SHG Pragati (Pirpainti)</span><span style="color:#00A8B5;">9/12 tests</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:75%;"></div></div>
+            </div>
+            <div class="shg-progress">
+                <div class="shg-label"><span>SHG Udaan (Gopalpur)</span><span style="color:#00A8B5;">7/12 tests</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:58%;"></div></div>
+            </div>
+            <div class="shg-progress">
+                <div class="shg-label"><span>SHG Jyoti (Naugachia)</span><span style="color:#FF6B35;">4/12 tests</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:33%;background:linear-gradient(90deg,#FF6B35,#FFD700);"></div></div>
+            </div>
+            <div class="shg-progress">
+                <div class="shg-label"><span>SHG Nari (Kahalgaon)</span><span style="color:#FF6B35;">3/12 tests</span></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:25%;background:linear-gradient(90deg,#FF6B35,#FFD700);"></div></div>
+            </div>
+
+            <div class="panel-title" style="margin-top:20px;">Seasonal Forecast</div>
+            <div class="stat-card warning" style="font-size:12px;">
+                <div style="color:#FF6B35;font-weight:600;">Monsoon Risk Alert (June-Aug)</div>
+                <div style="margin-top:4px;">LSTM model predicts 2.4x ammonia spike in Kahalgaon block post-monsoon based on 2024-2025 patterns. Pre-position aeration kits.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map centered on Bhagalpur, Bihar
+        const map = L.map('map', {
+            center: [25.25, 86.98],
+            zoom: 11,
+            zoomControl: false,
+        });
+
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // Dark tile layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap, &copy; CARTO',
+            maxZoom: 18,
+        }).addTo(map);
+
+        // Simulated test point data for Bhagalpur district
+        // [lat, lng, intensity] - intensity represents contamination level
+        const testPoints = [
+            // Bhagalpur city area - moderate
+            [25.2425, 86.9842, 0.4], [25.2510, 86.9750, 0.3], [25.2380, 86.9910, 0.5],
+            [25.2550, 86.9680, 0.2], [25.2350, 87.0010, 0.6], [25.2480, 86.9550, 0.3],
+            [25.2600, 86.9900, 0.4], [25.2300, 86.9700, 0.5], [25.2450, 87.0100, 0.3],
+
+            // Sultanpur area - HIGH contamination (ammonia hotspot)
+            [25.2100, 87.0500, 0.95], [25.2150, 87.0450, 0.9], [25.2050, 87.0550, 0.85],
+            [25.2200, 87.0400, 0.8], [25.2000, 87.0600, 0.92], [25.2130, 87.0520, 0.88],
+            [25.2080, 87.0480, 0.93], [25.2170, 87.0380, 0.75], [25.2020, 87.0570, 0.87],
+
+            // Sabour area - safe
+            [25.2400, 86.9200, 0.1], [25.2350, 86.9150, 0.15], [25.2450, 86.9100, 0.12],
+            [25.2500, 86.9250, 0.08], [25.2300, 86.9300, 0.18], [25.2380, 86.9050, 0.1],
+
+            // Pirpainti - elevated
+            [25.3200, 87.0800, 0.7], [25.3150, 87.0750, 0.65], [25.3250, 87.0850, 0.72],
+            [25.3100, 87.0900, 0.68], [25.3300, 87.0700, 0.6], [25.3180, 87.0820, 0.73],
+
+            // Gopalpur - mostly safe
+            [25.2800, 86.9000, 0.2], [25.2750, 86.9050, 0.15], [25.2850, 86.8950, 0.22],
+            [25.2700, 86.9100, 0.18], [25.2900, 86.8900, 0.25],
+
+            // Naugachia - moderate
+            [25.3800, 87.1000, 0.5], [25.3750, 87.0950, 0.45], [25.3850, 87.1050, 0.55],
+            [25.3700, 87.1100, 0.48], [25.3900, 87.0900, 0.52],
+
+            // Kahalgaon - high iron area
+            [25.2600, 87.2200, 0.7], [25.2550, 87.2150, 0.65], [25.2650, 87.2250, 0.75],
+            [25.2500, 87.2300, 0.72], [25.2700, 87.2100, 0.68], [25.2580, 87.2180, 0.71],
+
+            // Scattered safe points
+            [25.1800, 86.9500, 0.1], [25.3000, 86.9500, 0.15], [25.2200, 86.8800, 0.12],
+            [25.3500, 87.0200, 0.2], [25.1900, 87.0200, 0.18],
+        ];
+
+        // Heat map layer
+        const heat = L.heatLayer(testPoints, {
+            radius: 35,
+            blur: 25,
+            maxZoom: 15,
+            max: 1.0,
+            gradient: {
+                0.0: '#2EA06A',
+                0.3: '#7BC67E',
+                0.5: '#FFD700',
+                0.7: '#FF6B35',
+                0.9: '#E83E3E',
+                1.0: '#B71C1C',
+            }
+        }).addTo(map);
+
+        // Add test point markers
+        const markerColors = (intensity) => {
+            if (intensity < 0.3) return '#2EA06A';
+            if (intensity < 0.5) return '#FFD700';
+            if (intensity < 0.7) return '#FF6B35';
+            return '#E83E3E';
+        };
+
+        const statusLabel = (intensity) => {
+            if (intensity < 0.3) return 'SAFE';
+            if (intensity < 0.5) return 'MODERATE';
+            if (intensity < 0.7) return 'ELEVATED';
+            return 'CRITICAL';
+        };
+
+        const contaminantData = (intensity) => {
+            const nh3 = (intensity * 3.5).toFixed(2);
+            const fe = (intensity * 1.2).toFixed(2);
+            const no3 = (intensity * 55).toFixed(1);
+            return { nh3, fe, no3 };
+        };
+
+        const sourceNames = [
+            'Borewell #1', 'Hand Pump', 'Tap Water', 'Open Well',
+            'Borewell #2', 'Tube Well', 'Borewell #3', 'Community Tap',
+            'River Ghat', 'Borewell #4', 'Hand Pump #2', 'Piped Supply',
+        ];
+
+        const shgNames = [
+            'SHG Shakti', 'SHG Pragati', 'SHG Udaan', 'SHG Jyoti', 'SHG Nari',
+            'SHG Aasha', 'SHG Disha', 'SHG Prerna', 'SHG Saheli', 'SHG Kiran',
+        ];
+
+        const testerNames = [
+            'Meena Devi', 'Sunita Kumari', 'Anita Singh', 'Kavita Yadav',
+            'Rani Devi', 'Priya Gupta', 'Lakshmi Devi', 'Sita Kumari',
+        ];
+
+        testPoints.forEach((point, i) => {
+            const [lat, lng, intensity] = point;
+            const color = markerColors(intensity);
+            const status = statusLabel(intensity);
+            const data = contaminantData(intensity);
+            const source = sourceNames[i % sourceNames.length];
+            const shg = shgNames[i % shgNames.length];
+            const tester = testerNames[i % testerNames.length];
+
+            const marker = L.circleMarker([lat, lng], {
+                radius: 5,
+                fillColor: color,
+                color: '#112240',
+                weight: 1,
+                fillOpacity: 0.9,
+            }).addTo(map);
+
+            marker.bindPopup(`
+                <div style="font-family:Segoe UI;min-width:200px;">
+                    <div style="font-weight:700;font-size:14px;color:#0D2B45;margin-bottom:4px;">${source}</div>
+                    <div style="font-size:11px;color:#666;margin-bottom:8px;">Tested by ${tester} (${shg})</div>
+                    <div style="background:${color};color:white;padding:3px 8px;border-radius:4px;display:inline-block;font-size:11px;font-weight:600;margin-bottom:8px;">${status}</div>
+                    <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                        <tr style="border-bottom:1px solid #eee;"><td style="padding:3px 0;">NH3 (Ammonia)</td><td style="text-align:right;font-weight:600;color:${parseFloat(data.nh3) > 0.5 ? '#E83E3E' : '#2EA06A'}">${data.nh3} mg/L</td></tr>
+                        <tr style="border-bottom:1px solid #eee;"><td style="padding:3px 0;">Fe (Iron)</td><td style="text-align:right;font-weight:600;color:${parseFloat(data.fe) > 0.3 ? '#FF6B35' : '#2EA06A'}">${data.fe} mg/L</td></tr>
+                        <tr><td style="padding:3px 0;">NO3 (Nitrate)</td><td style="text-align:right;font-weight:600;color:${parseFloat(data.no3) > 45 ? '#FF6B35' : '#2EA06A'}">${data.no3} mg/L</td></tr>
+                    </table>
+                    <div style="font-size:10px;color:#999;margin-top:6px;">13 Mar 2026, ${8 + Math.floor(Math.random()*8)}:${String(Math.floor(Math.random()*60)).padStart(2,'0')} IST</div>
+                </div>
+            `);
+        });
+
+        // Add SHG cluster labels
+        const shgLocations = [
+            { name: 'SHG Shakti', lat: 25.2400, lng: 86.9200, tests: '12/12' },
+            { name: 'SHG Pragati', lat: 25.3200, lng: 87.0800, tests: '9/12' },
+            { name: 'SHG Udaan', lat: 25.2800, lng: 86.9000, tests: '7/12' },
+            { name: 'SHG Jyoti', lat: 25.3800, lng: 87.1000, tests: '4/12' },
+            { name: 'SHG Nari', lat: 25.2600, lng: 87.2200, tests: '3/12' },
+        ];
+
+        shgLocations.forEach(shg => {
+            L.marker([shg.lat, shg.lng], {
+                icon: L.divIcon({
+                    className: 'shg-label',
+                    html: `<div style="background:rgba(17,34,64,0.85);color:#00A8B5;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;white-space:nowrap;border:1px solid #1B3A5C;">${shg.name} (${shg.tests})</div>`,
+                    iconSize: [120, 20],
+                    iconAnchor: [60, -10],
+                })
+            }).addTo(map);
+        });
+
+        // Simulate real-time updates
+        const alertPanel = document.querySelector('.right-panel');
+
+        function addLiveTest() {
+            const sources = ['Borewell #7', 'Hand Pump #3', 'Community Tap', 'Tube Well #2', 'Open Well #4'];
+            const testers = ['Ritu Devi', 'Sarita Kumari', 'Geeta Singh', 'Mamta Yadav'];
+            const shgs = ['SHG Aasha', 'SHG Disha', 'SHG Prerna'];
+
+            const safe = Math.random() > 0.3;
+            const source = sources[Math.floor(Math.random() * sources.length)];
+            const tester = testers[Math.floor(Math.random() * testers.length)];
+            const shg = shgs[Math.floor(Math.random() * shgs.length)];
+
+            // Flash the live badge
+            const badge = document.querySelector('.live-badge');
+            badge.style.background = '#2EA06A';
+            setTimeout(() => badge.style.background = '#E83E3E', 500);
+        }
+
+        // Auto-update every 15 seconds
+        setInterval(addLiveTest, 15000);
+    </script>
+</body>
+</html>

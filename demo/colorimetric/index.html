@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JalSakhi - Colorimetric Strip Analyzer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #0D1B2A;
+            color: #E0E0E0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0D2B45, #1B6B93);
+            padding: 16px 24px;
+            border-bottom: 3px solid #00A8B5;
+            text-align: center;
+        }
+        .header h1 { font-size: 24px; color: #fff; }
+        .header h1 span { color: #00A8B5; }
+        .header p { font-size: 12px; color: #8CB4C9; margin-top: 4px; }
+
+        .app {
+            max-width: 480px;
+            margin: 20px auto;
+            padding: 0 16px;
+        }
+
+        .mode-switch {
+            display: flex;
+            background: #112240;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: transparent;
+            color: #8CB4C9;
+        }
+        .mode-btn.active {
+            background: #00A8B5;
+            color: #fff;
+        }
+
+        .camera-area {
+            background: #112240;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            border: 2px dashed #1B3A5C;
+            position: relative;
+        }
+        .camera-area.has-image { border-style: solid; border-color: #00A8B5; }
+
+        #video-feed, #captured-image {
+            width: 100%;
+            display: block;
+            border-radius: 10px;
+        }
+        #captured-image { display: none; }
+
+        .camera-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(13, 27, 42, 0.7);
+            cursor: pointer;
+        }
+        .camera-overlay.hidden { display: none; }
+        .camera-icon { font-size: 48px; margin-bottom: 8px; }
+        .camera-text { font-size: 14px; color: #8CB4C9; }
+
+        .guide-frame {
+            position: absolute;
+            top: 10%; left: 10%; right: 10%; bottom: 10%;
+            border: 2px solid #00A8B5;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+        .guide-frame::before {
+            content: 'Align strip within frame';
+            position: absolute;
+            bottom: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #00A8B5;
+            white-space: nowrap;
+        }
+        .guide-corners {
+            position: absolute;
+            width: 20px; height: 20px;
+            border-color: #FF6B35;
+            border-style: solid;
+        }
+        .corner-tl { top: 10%; left: 10%; border-width: 3px 0 0 3px; }
+        .corner-tr { top: 10%; right: 10%; border-width: 3px 3px 0 0; }
+        .corner-bl { bottom: 10%; left: 10%; border-width: 0 0 3px 3px; }
+        .corner-br { bottom: 10%; right: 10%; border-width: 0 3px 3px 0; }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+        .btn-primary { background: #00A8B5; color: #fff; }
+        .btn-primary:hover { background: #008E99; }
+        .btn-secondary { background: #1A3350; color: #8CB4C9; border: 1px solid #1B3A5C; }
+        .btn-capture { background: #FF6B35; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .processing {
+            text-align: center;
+            padding: 30px;
+            display: none;
+        }
+        .processing.active { display: block; }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid #1B3A5C;
+            border-top: 3px solid #00A8B5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .processing-steps { text-align: left; margin-top: 12px; }
+        .step {
+            padding: 6px 0;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #5A7A99;
+        }
+        .step.active { color: #00A8B5; }
+        .step.done { color: #2EA06A; }
+        .step-icon { width: 16px; text-align: center; }
+
+        .results {
+            display: none;
+            animation: slideUp 0.5s ease;
+        }
+        .results.active { display: block; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .result-card {
+            background: #112240;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 10px;
+        }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .result-header h3 { font-size: 16px; color: #fff; }
+        .safety-badge {
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .safety-badge.safe { background: #2EA06A22; color: #2EA06A; border: 1px solid #2EA06A; }
+        .safety-badge.warning { background: #FF6B3522; color: #FF6B35; border: 1px solid #FF6B35; }
+        .safety-badge.danger { background: #E83E3E22; color: #E83E3E; border: 1px solid #E83E3E; }
+
+        .contaminant-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #1B3A5C;
+        }
+        .contaminant-row:last-child { border: none; }
+        .contaminant-name { font-size: 13px; }
+        .contaminant-value { font-weight: 600; font-size: 14px; }
+        .contaminant-bar {
+            flex: 1;
+            height: 4px;
+            background: #1B3A5C;
+            border-radius: 2px;
+            margin: 0 12px;
+            max-width: 120px;
+        }
+        .contaminant-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 1s ease;
+        }
+        .who-limit { font-size: 10px; color: #5A7A99; }
+
+        .confidence {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #8CB4C9;
+            margin-top: 8px;
+        }
+        .confidence-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+
+        .treatment-card {
+            background: #1A3350;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 10px;
+            border-left: 3px solid #FF6B35;
+        }
+        .treatment-card h4 { color: #FF6B35; font-size: 13px; margin-bottom: 6px; }
+        .treatment-card p { font-size: 12px; line-height: 1.5; }
+        .treatment-card.safe-card { border-left-color: #2EA06A; }
+        .treatment-card.safe-card h4 { color: #2EA06A; }
+
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #5A7A99;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #1B3A5C;
+        }
+
+        .demo-note {
+            background: #1A3350;
+            border: 1px solid #1B3A5C;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 11px;
+            color: #8CB4C9;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .sample-strips {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .sample-strip {
+            background: #112240;
+            border: 1px solid #1B3A5C;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .sample-strip:hover { border-color: #00A8B5; background: #1A3350; }
+        .sample-strip.selected { border-color: #00A8B5; background: #0D2B45; }
+        .strip-color {
+            width: 100%;
+            height: 40px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+        }
+        .sample-strip .label { font-size: 11px; color: #8CB4C9; }
+        .sample-strip .type { font-size: 10px; color: #5A7A99; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Jal<span>Sakhi</span> Strip Analyzer</h1>
+        <p>Colorimetric Water Quality Analysis | Mode 2</p>
+    </div>
+
+    <div class="app">
+        <div class="mode-switch">
+            <button class="mode-btn" onclick="switchMode('electro')">Electrochemical</button>
+            <button class="mode-btn active" onclick="switchMode('color')">Colorimetric</button>
+        </div>
+
+        <div class="demo-note">
+            DEMO MODE: Select a sample strip below to simulate analysis.<br>
+            In production, the phone camera captures the actual test strip.
+        </div>
+
+        <!-- Sample strip selection -->
+        <div class="sample-strips" id="strip-selector">
+            <div class="sample-strip" onclick="selectStrip(0)" id="strip-0">
+                <div class="strip-color" style="background: linear-gradient(180deg, #4CAF50, #81C784, #A5D6A7, #C8E6C9, #E8F5E9);"></div>
+                <div class="label">Clean Water</div>
+                <div class="type">Control Sample</div>
+            </div>
+            <div class="sample-strip" onclick="selectStrip(1)" id="strip-1">
+                <div class="strip-color" style="background: linear-gradient(180deg, #FF9800, #FFB74D, #8BC34A, #C8E6C9, #E8F5E9);"></div>
+                <div class="label">Ammonia Spiked</div>
+                <div class="type">1.2 mg/L NH3</div>
+            </div>
+            <div class="sample-strip" onclick="selectStrip(2)" id="strip-2">
+                <div class="strip-color" style="background: linear-gradient(180deg, #F44336, #E57373, #FFB74D, #C8E6C9, #FFF9C4);"></div>
+                <div class="label">Multi-Contaminant</div>
+                <div class="type">NH3 + Fe + NO3</div>
+            </div>
+            <div class="sample-strip" onclick="selectStrip(3)" id="strip-3">
+                <div class="strip-color" style="background: linear-gradient(180deg, #B71C1C, #E53935, #FF7043, #FFA726, #FFF176);"></div>
+                <div class="label">Critical Sample</div>
+                <div class="type">High Ammonia (3.1 mg/L)</div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" id="analyze-btn" onclick="startAnalysis()" disabled>
+            Analyze Selected Strip
+        </button>
+
+        <!-- Processing animation -->
+        <div class="processing" id="processing">
+            <div class="spinner"></div>
+            <div style="color:#00A8B5;font-weight:600;">Analyzing Strip...</div>
+            <div class="processing-steps">
+                <div class="step" id="step-1"><span class="step-icon">...</span> Detecting calibration card (ArUco markers)</div>
+                <div class="step" id="step-2"><span class="step-icon">...</span> Perspective correction (homography)</div>
+                <div class="step" id="step-3"><span class="step-icon">...</span> Color calibration (10-patch correction matrix)</div>
+                <div class="step" id="step-4"><span class="step-icon">...</span> Lighting normalization (white balance + CLAHE)</div>
+                <div class="step" id="step-5"><span class="step-icon">...</span> ROI extraction (reagent pad detection)</div>
+                <div class="step" id="step-6"><span class="step-icon">...</span> CNN inference (LAB color space regression)</div>
+                <div class="step" id="step-7"><span class="step-icon">...</span> Confidence scoring</div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results" id="results"></div>
+
+        <button class="btn btn-secondary" id="reset-btn" onclick="resetApp()" style="display:none;">
+            Test Another Sample
+        </button>
+    </div>
+
+    <script>
+        let selectedStrip = -1;
+
+        const sampleData = [
+            {
+                name: 'Clean Water - Control',
+                safety: 'safe',
+                safetyLabel: 'SAFE',
+                confidence: 'HIGH',
+                confColor: '#2EA06A',
+                contaminants: [
+                    { name: 'Ammonia (NH3)', value: '0.08 mg/L', limit: 'WHO: 0.5 mg/L', pct: 16, color: '#2EA06A' },
+                    { name: 'Iron (Fe)', value: '0.12 mg/L', limit: 'WHO: 0.3 mg/L', pct: 40, color: '#2EA06A' },
+                    { name: 'Nitrate (NO3)', value: '8.2 mg/L', limit: 'WHO: 50 mg/L', pct: 16, color: '#2EA06A' },
+                    { name: 'Free Chlorine', value: '0.3 mg/L', limit: 'WHO: 0.2-5 mg/L', pct: 6, color: '#2EA06A' },
+                    { name: 'pH', value: '7.2', limit: 'Range: 6.5-8.5', pct: 60, color: '#2EA06A' },
+                ],
+                treatment: { type: 'safe', title: 'No Treatment Required', text: 'All parameters within WHO guidelines. Water is safe for drinking and cooking.' },
+            },
+            {
+                name: 'Ammonia Spiked Sample',
+                safety: 'warning',
+                safetyLabel: 'MODERATE RISK',
+                confidence: 'HIGH',
+                confColor: '#2EA06A',
+                contaminants: [
+                    { name: 'Ammonia (NH3)', value: '1.2 mg/L', limit: 'WHO: 0.5 mg/L', pct: 80, color: '#FF6B35' },
+                    { name: 'Iron (Fe)', value: '0.15 mg/L', limit: 'WHO: 0.3 mg/L', pct: 50, color: '#2EA06A' },
+                    { name: 'Nitrate (NO3)', value: '12.5 mg/L', limit: 'WHO: 50 mg/L', pct: 25, color: '#2EA06A' },
+                    { name: 'Free Chlorine', value: '0.1 mg/L', limit: 'WHO: 0.2-5 mg/L', pct: 2, color: '#FFD700' },
+                    { name: 'pH', value: '7.8', limit: 'Range: 6.5-8.5', pct: 65, color: '#2EA06A' },
+                ],
+                treatment: { type: 'warn', title: 'Breakpoint Chlorination Recommended', text: 'Ammonia at 1.2 mg/L exceeds WHO limit (0.5 mg/L). Recommended chlorine dose: 9.1 mg/L Cl2. Add 18 drops of household bleach (5% NaClO) per liter. Wait 30 min before consumption.' },
+            },
+            {
+                name: 'Multi-Contaminant Sample',
+                safety: 'warning',
+                safetyLabel: 'ELEVATED RISK',
+                confidence: 'MEDIUM',
+                confColor: '#FF6B35',
+                contaminants: [
+                    { name: 'Ammonia (NH3)', value: '0.8 mg/L', limit: 'WHO: 0.5 mg/L', pct: 53, color: '#FF6B35' },
+                    { name: 'Iron (Fe)', value: '0.85 mg/L', limit: 'WHO: 0.3 mg/L', pct: 95, color: '#E83E3E' },
+                    { name: 'Nitrate (NO3)', value: '38 mg/L', limit: 'WHO: 50 mg/L', pct: 76, color: '#FF6B35' },
+                    { name: 'Free Chlorine', value: '0.05 mg/L', limit: 'WHO: 0.2-5 mg/L', pct: 1, color: '#E83E3E' },
+                    { name: 'pH', value: '6.8', limit: 'Range: 6.5-8.5', pct: 40, color: '#2EA06A' },
+                ],
+                treatment: { type: 'warn', title: 'Multi-Stage Treatment Required', text: 'Iron exceeds limit (0.85 mg/L). Ammonia elevated (0.8 mg/L). Nitrate approaching limit. Recommended: (1) Aeration for iron removal, (2) Breakpoint chlorination for ammonia (6.1 mg/L Cl2), (3) Boil before consumption as precaution.' },
+            },
+            {
+                name: 'Critical Ammonia Sample',
+                safety: 'danger',
+                safetyLabel: 'DO NOT CONSUME',
+                confidence: 'HIGH',
+                confColor: '#2EA06A',
+                contaminants: [
+                    { name: 'Ammonia (NH3)', value: '3.1 mg/L', limit: 'WHO: 0.5 mg/L', pct: 100, color: '#E83E3E' },
+                    { name: 'Iron (Fe)', value: '0.42 mg/L', limit: 'WHO: 0.3 mg/L', pct: 70, color: '#FF6B35' },
+                    { name: 'Nitrate (NO3)', value: '52 mg/L', limit: 'WHO: 50 mg/L', pct: 100, color: '#E83E3E' },
+                    { name: 'Free Chlorine', value: '0.0 mg/L', limit: 'WHO: 0.2-5 mg/L', pct: 0, color: '#E83E3E' },
+                    { name: 'pH', value: '8.1', limit: 'Range: 6.5-8.5', pct: 75, color: '#FFD700' },
+                ],
+                treatment: { type: 'danger', title: 'DO NOT CONSUME - Redirect to Safe Source', text: 'Ammonia at 3.1 mg/L (6.2x WHO limit). Risk of infant methemoglobinemia. Household treatment INSUFFICIENT. Nearest safe source: Sabour GP Hand Pump (2.3 km). Alert sent to community. Municipal notification generated.' },
+            },
+        ];
+
+        function selectStrip(index) {
+            selectedStrip = index;
+            document.querySelectorAll('.sample-strip').forEach((el, i) => {
+                el.classList.toggle('selected', i === index);
+            });
+            document.getElementById('analyze-btn').disabled = false;
+        }
+
+        function startAnalysis() {
+            if (selectedStrip < 0) return;
+
+            document.getElementById('strip-selector').style.display = 'none';
+            document.getElementById('analyze-btn').style.display = 'none';
+            document.querySelector('.demo-note').style.display = 'none';
+
+            const proc = document.getElementById('processing');
+            proc.classList.add('active');
+
+            // Animate processing steps
+            const steps = ['step-1', 'step-2', 'step-3', 'step-4', 'step-5', 'step-6', 'step-7'];
+            const delays = [400, 800, 1200, 1600, 2000, 2600, 3200];
+
+            steps.forEach((stepId, i) => {
+                setTimeout(() => {
+                    const el = document.getElementById(stepId);
+                    el.classList.add('active');
+                    el.querySelector('.step-icon').textContent = '...';
+
+                    if (i > 0) {
+                        const prev = document.getElementById(steps[i-1]);
+                        prev.classList.remove('active');
+                        prev.classList.add('done');
+                        prev.querySelector('.step-icon').textContent = 'OK';
+                    }
+                }, delays[i]);
+            });
+
+            // Show results
+            setTimeout(() => {
+                const lastStep = document.getElementById(steps[steps.length - 1]);
+                lastStep.classList.remove('active');
+                lastStep.classList.add('done');
+                lastStep.querySelector('.step-icon').textContent = 'OK';
+
+                setTimeout(() => {
+                    proc.classList.remove('active');
+                    showResults(selectedStrip);
+                }, 400);
+            }, 3600);
+        }
+
+        function showResults(index) {
+            const data = sampleData[index];
+            const resultsDiv = document.getElementById('results');
+
+            let contaminantRows = data.contaminants.map(c => `
+                <div class="contaminant-row">
+                    <div class="contaminant-name">${c.name}</div>
+                    <div class="contaminant-bar">
+                        <div class="contaminant-fill" style="width:${c.pct}%;background:${c.color};"></div>
+                    </div>
+                    <div>
+                        <div class="contaminant-value" style="color:${c.color};">${c.value}</div>
+                        <div class="who-limit">${c.limit}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            const treatmentClass = data.treatment.type === 'safe' ? 'safe-card' : '';
+
+            resultsDiv.innerHTML = `
+                <div class="result-card">
+                    <div class="result-header">
+                        <h3>${data.name}</h3>
+                        <div class="safety-badge ${data.safety}">${data.safetyLabel}</div>
+                    </div>
+                    ${contaminantRows}
+                    <div class="confidence">
+                        <div class="confidence-dot" style="background:${data.confColor};"></div>
+                        Confidence: ${data.confidence} | Phone: Simulated | Lighting: Corrected
+                    </div>
+                    <div class="meta-info">
+                        <span>Analysis time: 3.2s</span>
+                        <span>Model: colorimetric-v1.0</span>
+                        <span>Cal card: OK</span>
+                    </div>
+                </div>
+
+                <div class="treatment-card ${treatmentClass}">
+                    <h4>${data.treatment.title}</h4>
+                    <p>${data.treatment.text}</p>
+                </div>
+            `;
+
+            resultsDiv.classList.add('active');
+            document.getElementById('reset-btn').style.display = 'block';
+        }
+
+        function resetApp() {
+            selectedStrip = -1;
+            document.querySelectorAll('.sample-strip').forEach(el => el.classList.remove('selected'));
+            document.getElementById('strip-selector').style.display = 'grid';
+            document.getElementById('analyze-btn').style.display = 'block';
+            document.getElementById('analyze-btn').disabled = true;
+            document.querySelector('.demo-note').style.display = 'block';
+            document.getElementById('results').classList.remove('active');
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('reset-btn').style.display = 'none';
+
+            // Reset processing steps
+            for (let i = 1; i <= 7; i++) {
+                const el = document.getElementById(`step-${i}`);
+                el.classList.remove('active', 'done');
+                el.querySelector('.step-icon').textContent = '...';
+            }
+        }
+
+        function switchMode(mode) {
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            if (mode === 'color') {
+                document.querySelectorAll('.mode-btn')[1].classList.add('active');
+            } else {
+                document.querySelectorAll('.mode-btn')[0].classList.add('active');
+                // Could redirect to electrochemical demo
+            }
+        }
+    </script>
+</body>
+</html>
