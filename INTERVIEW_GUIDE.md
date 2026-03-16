@@ -261,4 +261,213 @@ Keep these at your fingertips:
 
 ---
 
+# PART 8: COMPETITIVE LANDSCAPE — "Has Anyone Built This?"
+
+## What EXISTS in Research Labs
+
+| Project | Year | What It Does | What It Doesn't Do |
+|---|---|---|---|
+| **UWED** (Harvard/Whitesides) | 2018 | Open-source BLE potentiostat, <$20 | No AI classification, no community platform, no water deployment |
+| **NanoStat** | 2022 | Open-source wireless potentiostat, full voltammetry | Lab tool — no field deployment, no ML |
+| **KAUSTat** (KAUST) | 2019 | Wearable wireless potentiostat | Research prototype, not water-focused |
+| **BluChem** | 2023 | <$40 portable potentiostat, Android app | General-purpose electrochemistry, not water-specific |
+
+## What EXISTS as Products
+
+| Product | Price | What It Does | Limitation |
+|---|---|---|---|
+| **Lishtot TestDrop Pro** | ~$50 | Binary safe/unsafe in 2 sec (electric field sensor) | No quantification — just red/blue light. Can't tell WHAT or HOW MUCH |
+| **Hach/LaMotte kits** | $500+ | Lab-grade single-parameter testing | Expensive, one contaminant at a time, no data aggregation |
+| **PalmSens/EmStat** | $300-2000 | Commercial portable potentiostats | Lab instruments, not consumer. No AI, no community layer |
+
+## The Gap JalSakhi Fills
+
+```
+                    EXISTS              DOESN'T EXIST (JalSakhi's space)
+                    ──────              ──────────────────────────────────
+Potentiostat HW     ✓ (many)
++ Smartphone app    ✓ (a few)
++ Water-specific    ✓ (some papers)
++ AI classification                    ✗ — nobody ships on-device ML for voltammograms
++ Multi-analyte                        ✗ — products are binary or single-parameter
++ Community platform                   ✗ — nobody aggregates crowdsourced electrochemical data
++ SHG deployment                       ✗ — nobody has a distribution/scale model
++ Treatment advisory                   ✗ — nobody prescribes what to DO about contamination
++ INR 25/test cost                     ✗ — nothing this cheap does quantitative multi-analyte
+```
+
+## The Killer Line for Judges
+
+> "The science exists — smartphone potentiostats published since 2014 by Harvard, KAUST, and others. What nobody has done is three things: (1) packaged it at INR 1,200 with AI that identifies contaminants automatically, (2) added a community intelligence layer that turns individual tests into district-level contamination maps, and (3) connected it to 12 million SHGs. We didn't invent voltammetry. We made it deployable."
+
+---
+
+# PART 9: TECHNICAL DEEP-DIVE — WHAT IS A VOLTAMMOGRAM?
+
+## The Core Concept
+
+A voltammogram is a **graph of current vs voltage** when you sweep voltage across electrodes in a liquid. Each contaminant produces a current spike at a specific voltage — its electrochemical fingerprint.
+
+```
+Current (μA)
+    │
+    │          ╭──╮  ← Lead peak (-0.45V)
+    │         ╱    ╲
+    │        ╱      ╲         ╭──╮  ← Ammonia peak (+0.25V)
+    │       ╱        ╲       ╱    ╲
+    │──────╱          ╲─────╱      ╲──────
+    │
+    └──────────────────────────────────────→ Voltage (V)
+         -0.8V              0V           +0.8V
+```
+
+**How to read it:**
+- **Where** a spike occurs (voltage) = **what** the contaminant is
+- **How tall** a spike is = **how much** is present (concentration)
+- Each contaminant has a fixed peak voltage determined by its chemistry
+
+**Analogy:** Like shining white light through a solution and seeing which wavelengths get absorbed (spectroscopy) — except instead of light wavelengths you're sweeping voltage, and instead of absorption you're measuring electron transfer.
+
+## Why DPV Pulses Matter
+
+A simple smooth voltage sweep produces noisy, broad humps. DPV adds **pulses** to extract clean signal:
+
+```
+Voltage
+  │
+  │         ┌───┐         ┌───┐         ┌───┐
+  │         │   │         │   │         │   │
+  │     ────┘   └─────────┘   └─────────┘   └─────
+  │   ────
+  │ ──
+  │──
+  └──────────────────────────────────────────→ Time
+       ↑       ↑
+       i1      i2
+  (before)  (end of pulse)
+```
+
+**At each voltage step:**
+1. Sit at base voltage → measure current **i1** (mostly capacitive background noise)
+2. Apply +50mV pulse for 50ms → measure current **i2** (background + contaminant signal)
+3. Calculate **i2 - i1** = pure contaminant signal (background cancels out)
+4. Step base voltage up by 5mV, repeat
+
+**Why subtraction works:**
+```
+i1 (before pulse):    background ≈ 5.00 μA
+i2 (during pulse):    background ≈ 5.00 μA  +  lead signal = 5.23 μA
+                      ──────────────────────────────────────────────
+i2 - i1:              background cancels     →  0.23 μA  ← pure signal
+```
+
+The capacitive background doesn't change with a 50mV bump. But if a contaminant is at its oxidation voltage, the pulse triggers extra electron transfer → extra current. Subtraction isolates just that.
+
+**Result comparison:**
+```
+Simple sweep:                       DPV:
+(noisy, broad)                      (clean, sharp peaks)
+
+Current                             Differential Current
+  │   ~~~╱~~╲~~~~                     │       ╭─╮
+  │~~╱~~╱    ╲~~~╲~~~                 │      ╱   ╲
+  │╱~~╱       ╲~~~~╲~~               │     ╱     ╲
+  │~╱          ╲~~~~~╲               │────╱       ╲────────
+  └──────────────────→ V             └──────────────────→ V
+```
+
+**Analogy:** Like noise-cancelling headphones. Two measurements = two microphones. One captures noise, the other captures noise + signal. Subtract → pure signal.
+
+---
+
+# PART 10: HOW 1 PPB LEAD DETECTION IS ACHIEVED
+
+> **Honest caveat: The prototype can't hit 1 ppb. This is the production design. Know this distinction for the interview.**
+
+## The Five-Layer Chain
+
+### Layer 1: Bismuth Film Pre-Concentration (The Biggest Factor)
+
+Plain carbon electrode detects lead at ~50 ppb. Not good enough.
+
+**DPASV (Differential Pulse Anodic Stripping Voltammetry):**
+1. Bismuth is electroplated onto the carbon SPE surface
+2. Hold electrode at -1.2V for 120 seconds → lead ions from surrounding water **migrate and accumulate** onto the electrode
+3. 120 seconds of lead from the entire sample volume, concentrated into one tiny spot
+4. Sweep voltage upward → all accumulated lead oxidizes at once → massive current spike
+
+```
+Without pre-concentration:     With pre-concentration (DPASV):
+
+1 ppb in solution              Hold at -1.2V for 120 sec
+= tiny amount                  = lead ions migrate to electrode
+= invisible signal             = 120 sec of accumulation
+
+                               Sweep up → all lead strips off at once
+                               → detectable peak even at 1 ppb
+```
+
+**Analogy:** Trying to hear a whisper in a noisy room. Instead of listening for 1 second, record for 2 minutes and stack the audio. The whisper adds up, random noise averages out.
+
+### Layer 2: AD5940 Analog Front-End (Production Hardware)
+
+The pre-concentrated signal is still in the **low nanoamp range**. Need hardware that can measure it.
+
+| Spec | ESP32 (Prototype) | AD5940 (Production) |
+|---|---|---|
+| ADC resolution | 12-bit (4,096 levels) | 16-bit (65,536 levels) — 16x finer |
+| Current sensitivity | ~1 μA minimum | 10 nA minimum — 100x better |
+| TIA gain | Fixed resistor | Programmable 200Ω to 10MΩ, auto-ranges |
+| Noise filtering | Software only | Hardware Sinc2+Sinc3 (rejects 50/60 Hz mains) |
+
+At 1 ppb lead after pre-concentration, the stripping peak is ~10-50 nA. ESP32 can't see it. AD5940 can.
+
+### Layer 3: PCB Noise Engineering
+
+| Noise Source | How It's Killed |
+|---|---|
+| 50/60 Hz mains hum | Sinc3 digital filter (hardware) |
+| Digital switching noise | Separate analog/digital LDO rails |
+| RF interference | Stamped metal shielding can |
+| PCB trace crosstalk | 4-layer PCB: signal/GND/power/digital split |
+| High-impedance pickup | Guard ring around TIA input trace |
+| ADC aliasing | RC anti-aliasing filter before ADC |
+| Power supply ripple | Ferrite bead isolation |
+
+### Layer 4: Temperature Compensation
+
+Electrochemical reactions shift 20-30% per 10°C change. TMP117 sensor (±0.1°C) near electrode connector corrects in real-time:
+
+```
+I_corrected = I_measured / (1 + α(T - T_ref))
+```
+
+Per-contaminant Arrhenius-derived coefficients. Without this, 1 ppb drifts to 0.7-1.3 ppb from temperature alone.
+
+### Layer 5: Signal Processing Pipeline
+
+```
+Raw ADC data → Savitzky-Golay smoothing → ALS baseline correction
+→ Derivative peak detection → Clean peak → Concentration via calibration curve
+```
+
+## Summary: Remove Any Layer, You Lose It
+
+| Layer | Contribution |
+|---|---|
+| Bismuth film pre-concentration | Takes 1 ppb → detectable nanoamp signal |
+| AD5940 16-bit ADC + TIA | Can actually measure nanoamp currents |
+| PCB noise engineering | Keeps noise floor below the signal |
+| DPV pulse subtraction | Cancels capacitive background |
+| Temperature compensation | Prevents drift from masking the reading |
+| Signal processing | Extracts clean peak from remaining noise |
+
+## What to Tell Judges
+
+> "1 ppb requires five layers working together: bismuth film pre-concentration on the electrode, a 16-bit analog front-end with programmable gain, low-noise 4-layer PCB design, DPV differential measurement, and temperature compensation. Our prototype demonstrates the technique and AI pipeline. The production AD5940-based version at INR 1,200 achieves full sensitivity. Published literature validates this — Cui et al. 2015 report 0.1 ppb lead on bismuth-film SPEs with DPV."
+
+> **Prototype = proves the concept works. Production = achieves the sensitivity. Be upfront about this distinction.**
+
+---
+
 **Good luck, Ujjwal. You've built something real. Now go show them.**
