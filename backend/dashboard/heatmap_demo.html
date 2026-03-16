@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<title>JalSakhi — District Contamination Intelligence Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#0A2463;--teal:#1B998B;--gold:#E8AA14;--red:#D7263D;
+  --green:#10B981;--orange:#F97316;--bg:#F8FAFE;--white:#FFF;
+  --gray-100:#F3F4F6;--gray-200:#E5E7EB;--gray-400:#9CA3AF;
+  --gray-600:#4B5563;--gray-800:#1F2937;--gray-900:#111827;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --shadow:0 4px 12px rgba(0,0,0,.1);--radius:12px;
+}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--gray-800)}
+body{display:flex;flex-direction:column}
+
+/* Header */
+.header{background:var(--blue);color:var(--white);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0}
+.header h1{font-size:18px;font-weight:700;letter-spacing:-0.3px}
+.header .subtitle{font-size:12px;color:rgba(255,255,255,.7)}
+.header-right{display:flex;align-items:center;gap:16px}
+.live-badge{background:var(--red);color:var(--white);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;display:flex;align-items:center;gap:6px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--white);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.date-display{font-size:12px;color:rgba(255,255,255,.7)}
+
+/* Main layout */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:340px;background:var(--white);border-right:1px solid var(--gray-200);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar-section{padding:16px;border-bottom:1px solid var(--gray-200)}
+.sidebar-section h3{font-size:13px;font-weight:600;color:var(--gray-600);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+
+/* Stats cards */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-card{background:var(--gray-100);border-radius:8px;padding:10px;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:var(--blue)}
+.stat-value.danger{color:var(--red)}
+.stat-value.safe{color:var(--green)}
+.stat-value.warn{color:var(--orange)}
+.stat-label{font-size:10px;color:var(--gray-600);margin-top:2px}
+
+/* Contaminant selector */
+.contaminant-tabs{display:flex;flex-wrap:wrap;gap:6px}
+.contaminant-tab{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;border:1.5px solid var(--gray-200);background:var(--white);cursor:pointer;transition:all .2s}
+.contaminant-tab:hover{border-color:var(--blue);color:var(--blue)}
+.contaminant-tab.active{background:var(--blue);color:var(--white);border-color:var(--blue)}
+
+/* Village list */
+.village-list{display:flex;flex-direction:column;gap:6px}
+.village-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--gray-200);cursor:pointer;transition:all .2s}
+.village-card:hover{border-color:var(--blue);background:var(--gray-100)}
+.village-card.selected{border-color:var(--blue);background:rgba(10,36,99,.05)}
+.village-status{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.village-status.safe{background:var(--green)}
+.village-status.moderate{background:var(--gold)}
+.village-status.unsafe{background:var(--red)}
+.village-status.critical{background:var(--red);animation:pulse 1s infinite}
+.village-info{flex:1;min-width:0}
+.village-name{font-size:13px;font-weight:600;color:var(--gray-900)}
+.village-detail{font-size:11px;color:var(--gray-400);margin-top:1px}
+.village-value{font-size:14px;font-weight:700;text-align:right;white-space:nowrap}
+
+/* Map */
+.map-container{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* Info panel overlay */
+.info-panel{position:absolute;top:12px;right:12px;z-index:1000;background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;width:280px;display:none}
+.info-panel.visible{display:block}
+.info-panel h4{font-size:14px;font-weight:700;margin-bottom:8px}
+.info-close{position:absolute;top:8px;right:12px;background:none;border:none;font-size:18px;color:var(--gray-400);cursor:pointer}
+.info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:12px}
+.info-row:last-child{border:none}
+.info-label{color:var(--gray-600)}
+.info-value{font-weight:600}
+.info-value.safe{color:var(--green)}
+.info-value.warn{color:var(--orange)}
+.info-value.danger{color:var(--red)}
+
+/* Legend */
+.legend{position:absolute;bottom:24px;left:12px;z-index:1000;background:var(--white);border-radius:8px;box-shadow:var(--shadow);padding:12px 16px}
+.legend h5{font-size:11px;font-weight:600;color:var(--gray-600);margin-bottom:6px}
+.legend-bar{width:180px;height:12px;border-radius:6px;background:linear-gradient(90deg,#10B981,#F59E0B,#EF4444,#7C1D1C);margin-bottom:4px}
+.legend-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--gray-600)}
+
+/* Time series chart */
+.chart-container{height:160px;position:relative;margin-top:8px}
+.chart-canvas{width:100%;height:100%}
+.chart-title{font-size:11px;font-weight:600;color:var(--gray-600);margin-bottom:4px}
+
+/* Alerts */
+.alert-item{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(215,38,61,.06);border:1px solid rgba(215,38,61,.15);margin-bottom:6px}
+.alert-item.warn{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.15)}
+.alert-icon{font-size:14px;flex-shrink:0;margin-top:1px}
+.alert-text{font-size:11px;color:var(--gray-800);line-height:1.4}
+.alert-time{font-size:10px;color:var(--gray-400);margin-top:2px}
+
+/* Responsive */
+@media(max-width:768px){
+  .sidebar{width:100%;max-height:40vh;border-right:none;border-bottom:1px solid var(--gray-200)}
+  .main{flex-direction:column}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>JalSakhi — Contamination Intelligence Dashboard</h1>
+    <div class="subtitle">Bhagalpur District, Bihar | Jal Jeevan Mission Integration</div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><span class="live-dot"></span> LIVE</div>
+    <div class="date-display" id="dateDisplay"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+
+    <!-- District Stats -->
+    <div class="sidebar-section">
+      <h3>District Overview</h3>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value">47</div><div class="stat-label">Sources Tested</div></div>
+        <div class="stat-card"><div class="stat-value">12</div><div class="stat-label">Jal Sakhis Active</div></div>
+        <div class="stat-card"><div class="stat-value danger">14</div><div class="stat-label">Sources Unsafe</div></div>
+        <div class="stat-card"><div class="stat-value safe">72%</div><div class="stat-label">Safe Sources</div></div>
+        <div class="stat-card"><div class="stat-value warn">2.1</div><div class="stat-label">Avg NH3 (mg/L)</div></div>
+        <div class="stat-card"><div class="stat-value">318</div><div class="stat-label">Tests This Month</div></div>
+      </div>
+    </div>
+
+    <!-- Contaminant Filter -->
+    <div class="sidebar-section">
+      <h3>Contaminant Layer</h3>
+      <div class="contaminant-tabs">
+        <div class="contaminant-tab active" data-contaminant="ammonia">NH3 Ammonia</div>
+        <div class="contaminant-tab" data-contaminant="lead">Pb Lead</div>
+        <div class="contaminant-tab" data-contaminant="arsenic">As Arsenic</div>
+        <div class="contaminant-tab" data-contaminant="nitrate">NO3 Nitrate</div>
+        <div class="contaminant-tab" data-contaminant="iron">Fe Iron</div>
+        <div class="contaminant-tab" data-contaminant="fluoride">F Fluoride</div>
+      </div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="sidebar-section">
+      <h3>Active Alerts</h3>
+      <div id="alertsList">
+        <div class="alert-item">
+          <span class="alert-icon">&#9888;</span>
+          <div>
+            <div class="alert-text"><strong>Kahalgaon Block:</strong> Ammonia spike detected — 4.8 mg/L at Borewell #3. 9.6x WHO limit. Possible sewage infiltration.</div>
+            <div class="alert-time">2 hours ago</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <span class="alert-icon">&#9888;</span>
+          <div>
+            <div class="alert-text"><strong>Sultanganj:</strong> Lead detected at 18 ppb in hand pump near industrial area. 1.8x WHO limit.</div>
+            <div class="alert-time">6 hours ago</div>
+          </div>
+        </div>
+        <div class="alert-item warn">
+          <span class="alert-icon">&#9888;</span>
+          <div>
+            <div class="alert-text"><strong>Naugachhia:</strong> Ammonia rising trend — 0.3 to 1.2 mg/L over 4 weeks. Seasonal pattern detected.</div>
+            <div class="alert-time">1 day ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Village Rankings -->
+    <div class="sidebar-section" style="flex:1">
+      <h3>Water Sources — Ranked by Risk</h3>
+      <div class="village-list" id="villageList"></div>
+    </div>
+
+    <!-- Weekly Trend Chart -->
+    <div class="sidebar-section">
+      <div class="chart-title">Ammonia Trend — District Average (8 weeks)</div>
+      <div class="chart-container">
+        <canvas id="trendChart" class="chart-canvas"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="map-container">
+    <div id="map"></div>
+
+    <div class="legend">
+      <h5>Contamination Level</h5>
+      <div class="legend-bar"></div>
+      <div class="legend-labels">
+        <span>Safe</span><span>Moderate</span><span>High</span><span>Critical</span>
+      </div>
+    </div>
+
+    <div class="info-panel" id="infoPanel">
+      <button class="info-close" onclick="document.getElementById('infoPanel').classList.remove('visible')">&times;</button>
+      <h4 id="infoPanelTitle">Village Name</h4>
+      <div id="infoPanelContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== SIMULATED VILLAGE DATA =====
+// Bhagalpur district, Bihar — real village names, approximate coordinates
+// Ammonia contamination is documented in this region (CGWB data)
+
+const WHO_LIMITS = {
+  ammonia: 0.5,   // mg/L
+  lead: 10,       // ppb
+  arsenic: 10,    // ppb
+  nitrate: 50,    // mg/L
+  iron: 0.3,      // mg/L
+  fluoride: 1.5   // mg/L
+};
+
+const UNITS = {
+  ammonia: 'mg/L', lead: 'ppb', arsenic: 'ppb',
+  nitrate: 'mg/L', iron: 'mg/L', fluoride: 'mg/L'
+};
+
+const villages = [
+  // name, lat, lng, type, shg_name, tester, ammonia, lead, arsenic, nitrate, iron, fluoride, tests_count
+  { name: "Kahalgaon Borewell #3", lat: 25.2615, lng: 87.2315, type: "Borewell", shg: "Lakshmi SHG", tester: "Priya Devi", ammonia: 4.8, lead: 3, arsenic: 2, nitrate: 22, iron: 0.8, fluoride: 0.4, tests: 12 },
+  { name: "Sultanganj Hand Pump", lat: 25.2445, lng: 86.7380, type: "Hand Pump", shg: "Saraswati SHG", tester: "Meena Kumari", ammonia: 1.2, lead: 18, arsenic: 4, nitrate: 15, iron: 0.2, fluoride: 0.3, tests: 8 },
+  { name: "Pirpainti Tube Well", lat: 25.3180, lng: 87.0590, type: "Tube Well", shg: "Durga SHG", tester: "Anita Singh", ammonia: 3.2, lead: 5, arsenic: 7, nitrate: 38, iron: 1.2, fluoride: 0.5, tests: 15 },
+  { name: "Sabour Village Tap", lat: 25.2350, lng: 87.0470, type: "Tap (JJM)", shg: "Ganga SHG", tester: "Sunita Yadav", ammonia: 0.3, lead: 2, arsenic: 1, nitrate: 8, iron: 0.1, fluoride: 0.2, tests: 10 },
+  { name: "Nathnagar Borewell", lat: 25.2530, lng: 86.9710, type: "Borewell", shg: "Parvati SHG", tester: "Rekha Devi", ammonia: 2.6, lead: 6, arsenic: 12, nitrate: 42, iron: 0.6, fluoride: 0.8, tests: 14 },
+  { name: "Naugachhia Well #1", lat: 25.3910, lng: 87.0940, type: "Open Well", shg: "Sita SHG", tester: "Kavita Ram", ammonia: 1.8, lead: 4, arsenic: 3, nitrate: 28, iron: 0.4, fluoride: 0.3, tests: 11 },
+  { name: "Gopalpur Hand Pump", lat: 25.2910, lng: 86.8950, type: "Hand Pump", shg: "Radha SHG", tester: "Asha Devi", ammonia: 0.4, lead: 1, arsenic: 2, nitrate: 12, iron: 0.15, fluoride: 0.2, tests: 9 },
+  { name: "Amarpur Tube Well", lat: 25.0400, lng: 86.9030, type: "Tube Well", shg: "Kali SHG", tester: "Geeta Kumari", ammonia: 5.2, lead: 8, arsenic: 5, nitrate: 55, iron: 1.5, fluoride: 1.1, tests: 16 },
+  { name: "Banka Road Borewell", lat: 24.8910, lng: 86.9220, type: "Borewell", shg: "Savitri SHG", tester: "Manju Singh", ammonia: 0.8, lead: 3, arsenic: 8, nitrate: 18, iron: 0.25, fluoride: 0.7, tests: 7 },
+  { name: "Bhagalpur City Tap #7", lat: 25.2425, lng: 86.9842, type: "Tap (JJM)", shg: "Laxmi SHG", tester: "Pooja Verma", ammonia: 0.2, lead: 2, arsenic: 1, nitrate: 5, iron: 0.08, fluoride: 0.15, tests: 22 },
+  { name: "Colgong Borewell", lat: 25.2630, lng: 87.2290, type: "Borewell", shg: "Janaki SHG", tester: "Renu Devi", ammonia: 3.8, lead: 7, arsenic: 6, nitrate: 35, iron: 0.9, fluoride: 0.6, tests: 13 },
+  { name: "Jagdishpur Well", lat: 25.1800, lng: 86.8520, type: "Open Well", shg: "Uma SHG", tester: "Suman Kumari", ammonia: 1.5, lead: 4, arsenic: 3, nitrate: 20, iron: 0.35, fluoride: 0.4, tests: 6 },
+  { name: "Barari Hand Pump #2", lat: 25.2680, lng: 86.9580, type: "Hand Pump", shg: "Champa SHG", tester: "Nisha Devi", ammonia: 0.6, lead: 2, arsenic: 2, nitrate: 10, iron: 0.12, fluoride: 0.2, tests: 18 },
+  { name: "Shahkund Tube Well", lat: 25.2990, lng: 86.8090, type: "Tube Well", shg: "Tulsi SHG", tester: "Babita Rai", ammonia: 2.1, lead: 5, arsenic: 15, nitrate: 30, iron: 0.55, fluoride: 0.9, tests: 11 },
+  { name: "Sanhoula Borewell", lat: 25.3200, lng: 86.9150, type: "Borewell", shg: "Malti SHG", tester: "Usha Sharma", ammonia: 0.15, lead: 1, arsenic: 1, nitrate: 6, iron: 0.05, fluoride: 0.1, tests: 20 },
+  { name: "Ismailpur Open Well", lat: 25.1950, lng: 87.1100, type: "Open Well", shg: "Anjali SHG", tester: "Rani Das", ammonia: 4.1, lead: 9, arsenic: 4, nitrate: 48, iron: 1.1, fluoride: 0.5, tests: 9 },
+  { name: "Vikramshila Tap", lat: 25.3250, lng: 87.2850, type: "Tap (JJM)", shg: "Mira SHG", tester: "Deepa Kumari", ammonia: 0.35, lead: 2, arsenic: 1, nitrate: 7, iron: 0.1, fluoride: 0.2, tests: 14 },
+  // Additional interpolation points for denser heatmap
+  { name: "Barari South Well", lat: 25.2400, lng: 86.9400, type: "Open Well", shg: "Radha SHG", tester: "Kiran Devi", ammonia: 1.0, lead: 3, arsenic: 2, nitrate: 14, iron: 0.2, fluoride: 0.3, tests: 5 },
+  { name: "Nathnagar East HP", lat: 25.2600, lng: 87.0100, type: "Hand Pump", shg: "Ganga SHG", tester: "Lata Singh", ammonia: 2.8, lead: 5, arsenic: 8, nitrate: 32, iron: 0.7, fluoride: 0.6, tests: 8 },
+  { name: "Tilkamanjhi BW", lat: 25.2500, lng: 86.9900, type: "Borewell", shg: "Parvati SHG", tester: "Mala Devi", ammonia: 1.4, lead: 4, arsenic: 3, nitrate: 18, iron: 0.3, fluoride: 0.35, tests: 12 },
+  { name: "Champanagar TW", lat: 25.2350, lng: 87.0000, type: "Tube Well", shg: "Sita SHG", tester: "Shanti Kumari", ammonia: 0.9, lead: 2, arsenic: 2, nitrate: 11, iron: 0.15, fluoride: 0.25, tests: 10 },
+  { name: "Kajraili Borewell", lat: 25.2200, lng: 86.9600, type: "Borewell", shg: "Durga SHG", tester: "Phool Devi", ammonia: 3.5, lead: 7, arsenic: 5, nitrate: 40, iron: 0.85, fluoride: 0.55, tests: 7 },
+  { name: "Bhagalpur North HP", lat: 25.2700, lng: 86.9700, type: "Hand Pump", shg: "Kali SHG", tester: "Ritu Rai", ammonia: 0.5, lead: 2, arsenic: 1, nitrate: 9, iron: 0.1, fluoride: 0.2, tests: 15 },
+  { name: "Adampur Open Well", lat: 25.2100, lng: 87.0700, type: "Open Well", shg: "Savitri SHG", tester: "Jyoti Das", ammonia: 2.3, lead: 6, arsenic: 9, nitrate: 25, iron: 0.5, fluoride: 0.7, tests: 6 },
+  { name: "Munger Road TW", lat: 25.2000, lng: 86.8800, type: "Tube Well", shg: "Lakshmi SHG", tester: "Saroj Devi", ammonia: 1.6, lead: 3, arsenic: 4, nitrate: 22, iron: 0.4, fluoride: 0.45, tests: 9 },
+  { name: "Sultanganj South BW", lat: 25.2200, lng: 86.7500, type: "Borewell", shg: "Janaki SHG", tester: "Kamla Kumari", ammonia: 0.7, lead: 2, arsenic: 2, nitrate: 13, iron: 0.18, fluoride: 0.3, tests: 11 },
+  { name: "Colgong South HP", lat: 25.2400, lng: 87.2100, type: "Hand Pump", shg: "Uma SHG", tester: "Pushpa Devi", ammonia: 3.0, lead: 6, arsenic: 5, nitrate: 33, iron: 0.75, fluoride: 0.5, tests: 8 },
+];
+
+// Add weekly trend data (8 weeks of district average ammonia)
+const weeklyTrend = [
+  { week: 'W1 Jan', value: 1.2 },
+  { week: 'W2 Jan', value: 1.4 },
+  { week: 'W3 Jan', value: 1.1 },
+  { week: 'W4 Jan', value: 1.6 },
+  { week: 'W1 Feb', value: 1.8 },
+  { week: 'W2 Feb', value: 2.0 },
+  { week: 'W3 Feb', value: 1.9 },
+  { week: 'W4 Feb', value: 2.1 },
+];
+
+let currentContaminant = 'ammonia';
+let selectedVillage = null;
+let map, heatLayer, markers = [];
+
+// ===== MAP INITIALIZATION =====
+function initMap() {
+  map = L.map('map', {
+    center: [25.24, 87.00],
+    zoom: 11,
+    zoomControl: true,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap | JalSakhi Contamination Intelligence',
+    maxZoom: 18,
+  }).addTo(map);
+
+  updateHeatmap();
+  renderVillageList();
+  renderTrendChart();
+  updateDateDisplay();
+}
+
+// ===== HEATMAP =====
+function getContaminantValue(village, contaminant) {
+  const idx = villages.indexOf(village);
+  if (idx >= 0 && liveOverrides[idx] && liveOverrides[idx][contaminant] !== undefined) {
+    return liveOverrides[idx][contaminant];
+  }
+  return village[contaminant];
+}
+
+function getContaminantIntensity(village, contaminant) {
+  const value = getContaminantValue(village, contaminant);
+  const limit = WHO_LIMITS[contaminant];
+  return Math.min(value / (limit * 5), 1); // normalize: 5x WHO = max intensity
+}
+
+function getStatusClass(village, contaminant) {
+  const value = getContaminantValue(village, contaminant);
+  const limit = WHO_LIMITS[contaminant];
+  const ratio = value / limit;
+  if (ratio <= 0.5) return 'safe';
+  if (ratio <= 1.0) return 'moderate';
+  if (ratio <= 3.0) return 'unsafe';
+  return 'critical';
+}
+
+function getStatusLabel(village, contaminant) {
+  const cls = getStatusClass(village, contaminant);
+  return { safe: 'Safe', moderate: 'Moderate', unsafe: 'Unsafe', critical: 'Critical' }[cls];
+}
+
+function getMarkerColor(village, contaminant) {
+  const cls = getStatusClass(village, contaminant);
+  return { safe: '#10B981', moderate: '#E8AA14', unsafe: '#F97316', critical: '#D7263D' }[cls];
+}
+
+function updateHeatmap() {
+  // Remove old layers
+  if (heatLayer) map.removeLayer(heatLayer);
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  // Build heat data
+  const heatData = villages.map(v => [
+    v.lat, v.lng, getContaminantIntensity(v, currentContaminant)
+  ]);
+
+  heatLayer = L.heatLayer(heatData, {
+    radius: 35,
+    blur: 25,
+    maxZoom: 14,
+    max: 1.0,
+    gradient: { 0.0: '#10B981', 0.25: '#84CC16', 0.5: '#F59E0B', 0.75: '#F97316', 1.0: '#DC2626' }
+  }).addTo(map);
+
+  // Add circle markers for each village
+  villages.forEach((v, i) => {
+    const color = getMarkerColor(v, currentContaminant);
+    const value = v[currentContaminant];
+    const unit = UNITS[currentContaminant];
+    const status = getStatusLabel(v, currentContaminant);
+
+    const marker = L.circleMarker([v.lat, v.lng], {
+      radius: 7,
+      fillColor: color,
+      color: '#fff',
+      weight: 2,
+      fillOpacity: 0.9,
+    }).addTo(map);
+
+    marker.bindTooltip(
+      `<strong>${v.name}</strong><br>${value} ${unit} — ${status}`,
+      { direction: 'top', offset: [0, -8] }
+    );
+
+    marker.on('click', () => showInfoPanel(v));
+    markers.push(marker);
+  });
+}
+
+// ===== INFO PANEL =====
+function showInfoPanel(village) {
+  selectedVillage = village;
+  const panel = document.getElementById('infoPanel');
+  document.getElementById('infoPanelTitle').textContent = village.name;
+
+  const contaminants = ['ammonia', 'lead', 'arsenic', 'nitrate', 'iron', 'fluoride'];
+  const names = { ammonia: 'Ammonia (NH3)', lead: 'Lead (Pb)', arsenic: 'Arsenic (As)', nitrate: 'Nitrate (NO3)', iron: 'Iron (Fe)', fluoride: 'Fluoride (F)' };
+
+  // Build info panel using DOM API (avoids XSS from innerHTML with dynamic data)
+  const container = document.getElementById('infoPanelContent');
+  container.textContent = '';
+
+  function addInfoRow(label, value, cls) {
+    const row = document.createElement('div');
+    row.className = 'info-row';
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'info-label';
+    labelSpan.textContent = label;
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'info-value' + (cls ? ' ' + cls : '');
+    valueSpan.textContent = value;
+    row.appendChild(labelSpan);
+    row.appendChild(valueSpan);
+    container.appendChild(row);
+  }
+
+  addInfoRow('Source Type', village.type);
+  addInfoRow('SHG', village.shg);
+  addInfoRow('Jal Sakhi', village.tester);
+  addInfoRow('Tests Done', String(village.tests));
+
+  const spacer = document.createElement('div');
+  spacer.style.height = '8px';
+  container.appendChild(spacer);
+
+  contaminants.forEach(c => {
+    const value = getContaminantValue(village, c);
+    const limit = WHO_LIMITS[c];
+    const ratio = value / limit;
+    let cls = 'safe';
+    if (ratio > 3) cls = 'danger';
+    else if (ratio > 1) cls = 'warn';
+
+    const display = (c === 'lead' || c === 'arsenic')
+      ? value + ' ppb'
+      : value + ' mg/L';
+    const whoText = ratio > 1 ? ' (' + ratio.toFixed(1) + 'x WHO)' : '';
+    addInfoRow(names[c], display + whoText, cls);
+  });
+
+  // Treatment advisory
+  const ammoniaVal = getContaminantValue(village, 'ammonia');
+  const advisory = document.createElement('div');
+  advisory.style.cssText = 'margin-top:10px;padding:8px;border-radius:6px;font-size:11px';
+  if (ammoniaVal > 3.0) {
+    advisory.style.background = 'rgba(215,38,61,.08)';
+    advisory.style.color = 'var(--red)';
+    advisory.innerHTML = '<strong>DO NOT CONSUME.</strong> Ammonia ' + ammoniaVal + 'mg/L exceeds safe limit by ' + (ammoniaVal / 0.5).toFixed(1) + 'x. Alert municipality. Redirect to nearest safe source.';
+  } else if (ammoniaVal > 0.5) {
+    const chlorineDose = (ammoniaVal * 7.6).toFixed(1);
+    advisory.style.background = 'rgba(245,158,11,.08)';
+    advisory.style.color = 'var(--orange)';
+    advisory.innerHTML = '<strong>Treatment:</strong> Breakpoint chlorination at ' + chlorineDose + ' mg/L dose. Aerate for 30 min before consumption.';
+  } else {
+    advisory.style.background = 'rgba(16,185,129,.08)';
+    advisory.style.color = 'var(--green)';
+    advisory.innerHTML = '<strong>Safe for consumption.</strong> All parameters within WHO guidelines.';
+  }
+  container.appendChild(advisory);
+  panel.classList.add('visible');
+
+  // Highlight in village list
+  document.querySelectorAll('.village-card').forEach(card => card.classList.remove('selected'));
+  const idx = villages.indexOf(village);
+  const card = document.querySelector(`.village-card[data-idx="${idx}"]`);
+  if (card) {
+    card.classList.add('selected');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// ===== VILLAGE LIST =====
+function renderVillageList() {
+  const list = document.getElementById('villageList');
+  const sorted = villages.map((v, i) => ({ ...v, idx: i }))
+    .sort((a, b) => {
+      const ra = a[currentContaminant] / WHO_LIMITS[currentContaminant];
+      const rb = b[currentContaminant] / WHO_LIMITS[currentContaminant];
+      return rb - ra; // highest risk first
+    });
+
+  list.innerHTML = sorted.map(v => {
+    const status = getStatusClass(v, currentContaminant);
+    const value = v[currentContaminant];
+    const unit = UNITS[currentContaminant];
+    const color = getMarkerColor(v, currentContaminant);
+
+    return `<div class="village-card" data-idx="${v.idx}" onclick="showInfoPanel(villages[${v.idx}])">
+      <div class="village-status ${status}"></div>
+      <div class="village-info">
+        <div class="village-name">${v.name}</div>
+        <div class="village-detail">${v.type} | ${v.tester} | ${v.tests} tests</div>
+      </div>
+      <div class="village-value" style="color:${color}">${value} ${unit}</div>
+    </div>`;
+  }).join('');
+}
+
+// ===== CONTAMINANT TABS =====
+document.querySelectorAll('.contaminant-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.contaminant-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentContaminant = tab.dataset.contaminant;
+    updateHeatmap();
+    renderVillageList();
+    if (selectedVillage) showInfoPanel(selectedVillage);
+  });
+});
+
+// ===== TREND CHART (Canvas) =====
+function renderTrendChart() {
+  const canvas = document.getElementById('trendChart');
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * 2;
+  canvas.height = rect.height * 2;
+  ctx.scale(2, 2);
+  const w = rect.width;
+  const h = rect.height;
+
+  const values = weeklyTrend.map(d => d.value);
+  const maxVal = Math.max(...values) * 1.3;
+  const padding = { top: 10, right: 10, bottom: 24, left: 35 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  // Background
+  ctx.fillStyle = '#F8FAFE';
+  ctx.fillRect(0, 0, w, h);
+
+  // WHO limit line
+  const whoY = padding.top + chartH * (1 - WHO_LIMITS.ammonia / maxVal);
+  ctx.strokeStyle = '#EF444466';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(padding.left, whoY);
+  ctx.lineTo(w - padding.right, whoY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#EF4444';
+  ctx.font = '9px sans-serif';
+  ctx.fillText('WHO 0.5', padding.left + 2, whoY - 3);
+
+  // Grid lines
+  ctx.strokeStyle = '#E5E7EB';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+
+    const val = (maxVal * (1 - i / 4)).toFixed(1);
+    ctx.fillStyle = '#9CA3AF';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(val, padding.left - 4, y + 3);
+  }
+
+  // Data line
+  ctx.beginPath();
+  ctx.strokeStyle = '#0A2463';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  values.forEach((val, i) => {
+    const x = padding.left + (chartW / (values.length - 1)) * i;
+    const y = padding.top + chartH * (1 - val / maxVal);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Area fill
+  ctx.lineTo(padding.left + chartW, padding.top + chartH);
+  ctx.lineTo(padding.left, padding.top + chartH);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(10,36,99,.06)';
+  ctx.fill();
+
+  // Data points
+  values.forEach((val, i) => {
+    const x = padding.left + (chartW / (values.length - 1)) * i;
+    const y = padding.top + chartH * (1 - val / maxVal);
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = val > WHO_LIMITS.ammonia ? '#EF4444' : '#10B981';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // X-axis labels
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '8px sans-serif';
+  ctx.textAlign = 'center';
+  weeklyTrend.forEach((d, i) => {
+    const x = padding.left + (chartW / (values.length - 1)) * i;
+    ctx.fillText(d.week, x, h - 4);
+  });
+}
+
+// ===== DATE DISPLAY =====
+function updateDateDisplay() {
+  const now = new Date();
+  document.getElementById('dateDisplay').textContent =
+    now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ===== SIMULATE LIVE UPDATES =====
+// Immutable overlay — original village data is never mutated
+const liveOverrides = {};
+
+function getVillageValue(village, contaminant) {
+  const idx = villages.indexOf(village);
+  if (idx >= 0 && liveOverrides[idx] && liveOverrides[idx][contaminant] !== undefined) {
+    return liveOverrides[idx][contaminant];
+  }
+  return village[contaminant];
+}
+
+function simulateLiveUpdate() {
+  const idx = Math.floor(Math.random() * villages.length);
+  const base = liveOverrides[idx]?.ammonia ?? villages[idx].ammonia;
+  const delta = (Math.random() - 0.45) * 0.3;
+  const newVal = +Math.max(0.01, Math.min(base + delta, 20)).toFixed(2);
+  liveOverrides[idx] = { ...(liveOverrides[idx] || {}), ammonia: newVal };
+
+  if (currentContaminant === 'ammonia') {
+    updateHeatmap();
+    renderVillageList();
+  }
+  updateDateDisplay();
+}
+
+setInterval(simulateLiveUpdate, 8000);
+
+// ===== INIT =====
+window.addEventListener('load', initMap);
+window.addEventListener('resize', () => {
+  renderTrendChart();
+  map.invalidateSize();
+});
+</script>
+</body>
+</html>
