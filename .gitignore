@@ -26,10 +26,17 @@ app/build/
 # Node
 node_modules/
 
-# Data files (large)
+# Data files (large, generated at runtime)
 data/*.csv
 data/*.json
+data/**/*.npz
 !data/sample_*.json
+
+# ML artifacts
+*.tflite
+backend/ml/checkpoints/
+.coverage
+*.egg-info/
 
 # OS
 .DS_Store
